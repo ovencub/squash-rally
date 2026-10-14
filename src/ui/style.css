@@ -125,3 +125,33 @@ input[type=range] { width: 180px; accent-color: var(--yellow); }
 .tutorial b { color: var(--yellow); }
 @keyframes fadeout { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 .hidden { display: none !important; }
+
+.speed-ctl {
+  position: absolute; right: 70px; top: 18px; display: flex; align-items: center; gap: 8px; pointer-events: auto;
+  padding: 6px 12px; border-radius: 12px; background: rgba(26, 18, 56, 0.6); font-size: 13px; font-weight: 700;
+}
+.speed-ctl input { width: 110px; }
+.speed-ctl b { min-width: 28px; color: var(--yellow); }
+
+/* ── AI 대전 스코어보드 (화면 상단 중앙) ── */
+.scoreboard {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
+  padding: 6px 18px 20px; border-radius: 14px; background: rgba(26, 18, 56, 0.82); box-shadow: 0 4px 0 rgba(0,0,0,0.25);
+}
+.sb-p { display: flex; align-items: center; gap: 8px; }
+.sb-name { font-weight: 900; letter-spacing: 0.06em; color: var(--teal); }
+.sb-name.ai { color: var(--coral); }
+.sb-games { font-size: 11px; color: var(--yellow); letter-spacing: 0.1em; }
+.sb-pts {
+  min-width: 46px; text-align: center; font-size: 30px; font-weight: 900; color: #1a1238; background: var(--yellow);
+  border-radius: 8px; padding: 0 8px; display: inline-block;
+}
+.sb-pts.punch { animation: punch 0.3s ease-out; }
+.sb-sep { font-size: 26px; font-weight: 900; }
+.sb-info { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center; font-size: 11px; color: #cfc6ea; white-space: nowrap; }
+.serve-tip {
+  position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); padding: 10px 20px; border-radius: 999px;
+  background: rgba(26,18,56,0.85); font-size: 18px; font-weight: 800; animation: pulse 1s ease-in-out infinite alternate;
+}
+.serve-tip b { color: var(--yellow); }
+@keyframes pulse { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.06); } }

@@ -61,6 +61,10 @@ export class CameraRig {
       tanHalf = Math.max((top - bottom) / 2, side / aspect);
     }
     tanHalf *= 1 + cam.fitMargin;
+    // 위쪽 HUD 자리 확보: 화면을 (1-f)만 쓰도록 넓히고 코트를 아래로 내림
+    const f = cam.hudTopReserve;
+    tanHalf /= 1 - f;
+    pitch += Math.atan(f * tanHalf);
     const fov = THREE.MathUtils.radToDeg(2 * Math.atan(tanHalf));
     this.camera.fov = THREE.MathUtils.clamp(fov, cam.minFov, cam.maxFov);
     this.camera.rotation.set(pitch, 0, 0, 'YXZ');

@@ -96,7 +96,8 @@ WSF 기준값(배율 1.0):
   - 거리 배점 `distanceScore`: 반지름 × `sweetRatio` 원에서 1, 중심·가장자리 `minDistScore`, 범위 밖 null.
   - 타이밍 배점 `timingScore`: 이상 순간(지나온 + 예측 궤적 중 공이 최적 원·이상 높이에 가장 가까운 때) 대비 오차.
   - 배점 = 거리 × 타이밍 → `planDrive`가 속력·앞벽 높이 보간, 방향 = `aimWallX`(캐릭터→커서 직선이 앞벽과 만나는 x). 발사 전 `isValidShot`으로 검증·보정해 항상 유효.
-- `ai.ts`: 상대 타격 이벤트 후 `reactionMs` 대기 → `predict`로 타점 추정(+`predictErr` 노이즈) → 플레이어와 같은 이동 모델로 이동 → 샷 선택(난이도별 정책: hard는 상대가 뒤면 DROP, 앞이면 깊은 DRIVE) → 판정은 `mistakeRate`로 확률적.
+- `serve.ts`: 서버 = 서비스 박스, 리시버 = 반대편 뒤 사각형. `planServe`는 서브 룰로 검증해 항상 유효.
+- `ai.ts` (M4 구현): 플레이어가 친 순간 반응 지연 → 예측 타점 옆 자리(위치 오차)로 같은 이동 모델로 이동 → 이상 순간(+타이밍 오차)에 맞는 손으로 스윙. 타구마다 `missChance`로 판단 실수(스윙 안 함). 노림: easy 중앙 / normal 무작위 / hard 상대 반대쪽. 이전 설명: 상대 타격 이벤트 후 `reactionMs` 대기 → `predict`로 타점 추정(+`predictErr` 노이즈) → 플레이어와 같은 이동 모델로 이동 → 샷 선택(난이도별 정책: hard는 상대가 뒤면 DROP, 앞이면 깊은 DRIVE) → 판정은 `mistakeRate`로 확률적.
 - `modes/solo.ts`: 콤보, 최고 콤보(localStorage `squash.best.<difficulty>`), PERFECT 수, 실점 시 콤보 0 + 재서브.
 - `modes/match.ts`: PAR 룰 + AI + 판정 연출.
 

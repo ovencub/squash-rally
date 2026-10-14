@@ -2,7 +2,7 @@ import { buildCourt, type CourtDims } from '../config/court';
 import { type Difficulty } from '../config/tuning';
 import { EventBus } from '../core/events';
 import { createBall, stepBall, type BallContact, type BallState, type Vec3 } from '../physics/ball';
-import { applyContact, applyHit, feedRally, newRally, type PlayerId, type RallyResult, type RallyState } from '../rules/rally';
+import { applyContact, applyHit, feedRally, newRally, type PlayerId, type RallyResult, type RallyState, type ServeSide } from '../rules/rally';
 
 export interface WorldEvents extends Record<string, unknown> {
   contact: BallContact;
@@ -33,9 +33,9 @@ export class World {
   }
 
   /** 공을 새로 쏘거나(서브/디버그) 현재 공을 친다 */
-  launch(from: Vec3, vel: Vec3, hitter: PlayerId, serve: boolean): void {
+  launch(from: Vec3, vel: Vec3, hitter: PlayerId, serve: boolean, serveSide: ServeSide = this.rally.serveSide): void {
     if (serve || this.rally.phase === 'over' || !this.ball) {
-      this.rally = newRally(this.players, hitter, this.rally.serveSide);
+      this.rally = newRally(this.players, hitter, serveSide);
     }
     this.ball = this.newBall(from, vel);
     this.rally = applyHit(this.rally, hitter, serve);

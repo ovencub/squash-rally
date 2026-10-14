@@ -17,6 +17,9 @@ export const tuning = {
       normal: { length: 0.85, width: 0.9 },
       hard: { length: 0.7, width: 0.8 },
     } as Record<Difficulty, { length: number; width: number }>,
+    // M3 결정(A안): 난이도별 게임 진행 속도 배율. 공·물리 시간이 이만큼 빨리 흐른다 (캐릭터 이동은 실제 시간 그대로)
+    // → 좁은 코트에서 덜 움직여도 되는 대신 반응 시간이 짧아진다.
+    gameSpeed: { easy: 1.0, normal: 1.15, hard: 1.35 } as Record<Difficulty, number>,
     // 기획서 6-3 미결정: 높이 라인(아웃/서비스/틴)도 길이 배율로 줄일지
     scaleHeightLines: false,
     // 렌더링용 벽 높이(아웃 라인 위 여유)
@@ -54,6 +57,7 @@ export const tuning = {
     // 코트 전체가 보이도록 FOV 자동 계산 시 여백 비율
     fitMargin: 0.04,
     fitTopExtra: 0.8, // 앞벽 위 스폰서 보드까지 화면에 넣는 높이(m)
+    hudTopReserve: 0.08, // 화면 위쪽 이 비율은 HUD(스코어보드) 자리로 비워 둠
     minFov: 35,
     maxFov: 80,
   },
@@ -95,14 +99,41 @@ export const tuning = {
   },
 
   player: {
-    // 수동 이동만 있으므로 충분히 빠르게 (플레이 테스트로 조정)
-    maxSpeed: 7.0, // m/s
+    // 기본 최고 속도 (m/s). 사용자가 설정/플레이 중 슬라이더로 바꿀 수 있음 (settings.moveSpeed)
+    maxSpeed: 6.3,
+    moveSpeedMin: 3.5,
+    moveSpeedMax: 9.0,
     accel: 38, // m/s²
     decel: 46,
     radius: 0.3,
     squeakMinSpeed: 3.0, // 이 속도 이상에서 급정지/급전환하면 스퀵
     squeakTurnDeg: 100,
     squeakCooldownMs: 400,
+  },
+
+  // ── AI 상대 (기획서 3-6): 같은 물리·룰·이동 상한, 반응/위치/타이밍 오차로 실력 차등 ──
+  ai: {
+    level: {
+      // reactionMs: 상대가 친 뒤 움직이기 시작할 때까지, standErrM: 서는 위치 오차(표준편차),
+      // timingSdMs: 스윙 타이밍 오차(표준편차), speedRatio: 기본 이동 속도 대비, aim: 노리는 방향
+      // missChance: 타구마다 판단 실수(한참 늦게 휘두름)로 놓칠 확률
+      easy: { reactionMs: 420, standErrM: 0.5, timingSdMs: 110, speedRatio: 0.72, missChance: 0.16, aim: 'center' },
+      normal: { reactionMs: 280, standErrM: 0.28, timingSdMs: 65, speedRatio: 0.88, missChance: 0.08, aim: 'mixed' },
+      hard: { reactionMs: 170, standErrM: 0.12, timingSdMs: 38, speedRatio: 1.0, missChance: 0.035, aim: 'away' },
+    } as Record<
+      Difficulty,
+      { reactionMs: number; standErrM: number; timingSdMs: number; speedRatio: number; missChance: number; aim: 'center' | 'mixed' | 'away' }
+    >,
+    serveDelayMs: 1000, // AI 서브 전 대기
+    // AI가 칠 때 타격감은 약하게 (내가 칠 때가 더 짜릿하게)
+    hitstopMs: 25,
+    shakeRatio: 0.25,
+  },
+
+  match: {
+    pointPauseMs: 1700, // 랠리 종료 → 다음 서브 준비
+    gamePauseMs: 2600, // 게임 종료 연출
+    minSeparation: 0.75, // 두 선수가 겹치지 않는 최소 거리 (m)
   },
 
   solo: {
