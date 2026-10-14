@@ -69,13 +69,29 @@ test('menu → solo → autoplay rally → pause → results', async ({ page }) 
   const missed = await session(page);
   expect(missed.misses).toBeGreaterThan(s1.misses);
 
-  // 마우스 제스처(↓당겼다 ↑밀기)가 스윙을 일으키는지 (헛스윙/타격 팝업)
-  await page.mouse.move(800, 500);
-  await page.mouse.down();
-  await page.mouse.move(800, 560, { steps: 4 });
-  await page.mouse.move(800, 420, { steps: 3 });
-  await page.mouse.up();
+  // 우클릭/좌클릭이 스윙을 일으키는지 (헛스윙/타격 팝업)
+  await page.mouse.move(800, 400);
+  await page.mouse.click(800, 400, { button: 'right' });
   await expect(page.locator('.popup').first()).toBeVisible({ timeout: 1000 });
+  await page.waitForTimeout(600);
+  await page.mouse.click(800, 400, { button: 'left' });
+  await expect(page.locator('.popup').first()).toBeVisible({ timeout: 1000 });
+
+  // 수동 이동 + 달리기 자세 (봇 꺼진 상태)
+  await page.keyboard.down('KeyA');
+  await page.waitForTimeout(260);
+  await shot(page, '11_run_side');
+  await page.keyboard.up('KeyA');
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(260);
+  await shot(page, '12_run_forward');
+  await page.keyboard.up('KeyW');
+  await page.keyboard.down('KeyS');
+  await page.waitForTimeout(300);
+  await shot(page, '13_run_back');
+  await page.keyboard.up('KeyS');
+  await page.waitForTimeout(600);
+  await shot(page, '14_ready');
 
   const fps = await page.evaluate(() => (window as unknown as Win).__stats.fps);
   console.log(`[fps] ${fps.toFixed(1)}`);

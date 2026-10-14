@@ -3,6 +3,21 @@
 
 type Synth = (ctx: AudioContext, out: AudioNode, t: number, vol: number, pitch: number) => void;
 
+/** 코트 울림용 짧은 리버브 임펄스 (스테레오 감쇠 노이즈) */
+export function makeImpulse(ctx: AudioContext, seconds = 0.9, decay = 3.2): AudioBuffer {
+  const len = Math.floor(ctx.sampleRate * seconds);
+  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    let seed = 777 + ch * 31;
+    for (let i = 0; i < len; i++) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      d[i] = ((seed / 0x7fffffff) * 2 - 1) * Math.pow(1 - i / len, decay);
+    }
+  }
+  return buf;
+}
+
 let noiseBuf: AudioBuffer | null = null;
 function noise(ctx: AudioContext): AudioBuffer {
   if (noiseBuf && noiseBuf.sampleRate === ctx.sampleRate) return noiseBuf;
@@ -38,6 +53,18 @@ function noiseBurst(ctx: AudioContext, out: AudioNode, t: number, vol: number, f
   src.stop(t + decay + 0.05);
 }
 
+/** 하이패스 노이즈 클릭 (밝은 트랜지언트) */
+function hp(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, decay: number) {
+  const src = ctx.createBufferSource();
+  src.buffer = noise(ctx);
+  const f = ctx.createBiquadFilter();
+  f.type = 'highpass';
+  f.frequency.value = freq;
+  src.connect(f).connect(env(ctx, out, t, vol, 0.0008, decay));
+  src.start(t);
+  src.stop(t + decay + 0.03);
+}
+
 function tone(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0: number, f1: number, decay: number, type: OscillatorType = 'sine') {
   const o = ctx.createOscillator();
   o.type = type;
@@ -49,19 +76,26 @@ function tone(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0: num
 }
 
 export const SYNTH: Record<string, Synth> = {
-  // 라켓 타격: 건조한 "딱" (노이즈 클릭 + 짧은 저음)
+  // 라켓 타격 (M3 피드백: 더 경쾌하고 시원하게): 고음 "탁" 트랜지언트 + 공이 눌리는 "퐁" 피치 드롭 + 짧은 몸통
   hit_soft: (c, o, t, v, p) => {
-    noiseBurst(c, o, t, v * 0.8, 2400 * p, 1.2, 0.05);
-    tone(c, o, t, v * 0.5, 320 * p, 120, 0.06);
+    hp(c, o, t, v * 0.7, 4200 * p, 0.018);
+    tone(c, o, t, v * 0.6, 1100 * p, 420 * p, 0.04, 'sine');
+    tone(c, o, t, v * 0.35, 230 * p, 120, 0.05, 'triangle');
   },
   hit_hard: (c, o, t, v, p) => {
-    noiseBurst(c, o, t, v, 1900 * p, 0.9, 0.07);
-    tone(c, o, t, v * 0.8, 260 * p, 70, 0.09, 'triangle');
+    hp(c, o, t, v * 0.95, 3600 * p, 0.022);
+    noiseBurst(c, o, t, v * 0.6, 2200 * p, 1.4, 0.035);
+    tone(c, o, t, v * 0.75, 1350 * p, 380 * p, 0.045, 'sine');
+    tone(c, o, t, v * 0.6, 180 * p, 75, 0.07, 'triangle');
   },
   hit_perfect: (c, o, t, v, p) => {
-    noiseBurst(c, o, t, v, 2600 * p, 0.8, 0.08);
-    tone(c, o, t, v * 0.9, 300 * p, 60, 0.12, 'triangle');
-    tone(c, o, t + 0.01, v * 0.35, 1800 * p, 2400 * p, 0.12, 'sine');
+    hp(c, o, t, v, 3000 * p, 0.03);
+    noiseBurst(c, o, t, v * 0.75, 2600 * p, 1.1, 0.045);
+    tone(c, o, t, v * 0.85, 1600 * p, 420 * p, 0.05, 'sine');
+    tone(c, o, t, v * 0.75, 160 * p, 55, 0.1, 'triangle');
+    // 반짝이는 꼬리
+    tone(c, o, t + 0.012, v * 0.22, 2400 * p, 3200 * p, 0.16, 'sine');
+    tone(c, o, t + 0.03, v * 0.14, 3600 * p, 4200 * p, 0.14, 'sine');
   },
   // 공 바운드
   bounce_front: (c, o, t, v, p) => {

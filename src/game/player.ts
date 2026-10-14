@@ -19,8 +19,8 @@ export function createMover(x: number, z: number): Mover {
 }
 
 /**
- * dir: 입력 방향(길이 ≤ 1). target이 있으면(자동 보조/AI) 그 지점으로 감속 도착.
- * speedRatio: 최고 속도 배율 (자동 보조는 느리게). 스퀵이 나면 true 반환.
+ * dir: 입력 방향(길이 ≤ 1). target이 있으면(봇/AI) 그 지점으로 감속 도착.
+ * speedRatio: 최고 속도 배율. 스퀵이 나면 true 반환.
  */
 export function moveStep(
   m: Mover,
@@ -100,9 +100,9 @@ export function moveStep(
   return squeak;
 }
 
-/** 공을 옆에 두고 칠 수 있는 서 있을 자리 (포핸드/백핸드 중 가까운 쪽) */
+/** 공이 최적 원 위(옆)에 오도록 서 있을 자리 (포핸드/백핸드 중 가까운 쪽). 디버그 봇용 */
 export function standSpotFor(ball: { x: number; z: number }, from: { x: number; z: number }, c: CourtDims): { x: number; z: number } {
-  const d = tuning.timing.idealSideDist;
+  const d = tuning.timing.reach * tuning.timing.sweetRatio;
   const lim = c.width / 2 - tuning.player.radius;
   const fore = { x: ball.x - d, z: ball.z + 0.15 }; // 공이 오른쪽 = 포핸드
   const back = { x: ball.x + d, z: ball.z + 0.15 };

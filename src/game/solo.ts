@@ -1,5 +1,5 @@
 import { type Difficulty } from '../config/tuning';
-import { type Quality } from './swing';
+import { type Grade } from './swing';
 
 // 1인 모드 기록 (기획서 3-5). 점수 = 연속 랠리(콤보), 실점하면 콤보만 0.
 
@@ -16,7 +16,7 @@ export class SoloSession {
   }
 
   /** 새 최고 기록이면 true */
-  onHit(q: Quality): boolean {
+  onHit(q: Grade): boolean {
     this.hits++;
     if (q === 'perfect') this.perfects++;
     this.combo++;

@@ -58,58 +58,51 @@ export const tuning = {
     maxFov: 80,
   },
 
-  // ── 조작 (M1 피드백: 스윙은 항상 드라이브) ──
+  // ── 조작 (M3 피드백: 클릭 스윙. 우클릭 = 포핸드, 좌클릭 = 백핸드, 커서 위치 = 방향) ──
   input: {
-    // 위로 미는 스트로크 인식: 최근 strokeWindowMs 동안 화면 높이 대비 이만큼 위로 움직이면 스윙
-    strokeMinDist: 0.05, // 화면 높이 비율
-    strokeWindowMs: 160,
-    maxStrokeSpeed: 3.0, // 화면 높이/초. 이 이상은 파워 1.0 (상한)
-    tapMaxMs: 220, // 이보다 짧고
-    tapMaxDist: 0.02, // 이보다 덜 움직이면 클릭(가볍게)
-    tapPower: 0.6,
-    aimFromStroke: 0.6, // 스트로크 좌우 기울기가 조준에 주는 영향 (m, 앞벽 기준)
-    // 기획서 6-2: 반전하면 위→아래 스트로크가 스윙
-    invertStroke: false,
-    bufferMs: 140, // 공이 닿는 범위에 들어오기 전 이만큼 일찍 휘둘러도 인정
-    swingCooldownMs: 320,
+    swingCooldownMs: 300, // 맞힌 뒤 다음 스윙까지
+    whiffCooldownMs: 450, // 헛스윙 뒤 (연타 방지)
+    // 커서가 캐릭터 바로 옆/뒤에 있어 앞벽 방향을 못 정할 때 쓰는 최대 좌우 기울기 (앞으로 1m당 m)
+    maxAimSlope: 1.6,
   },
 
-  // ── 타이밍 판정 ──
+  // ── 타격 범위 · 배점 ──
   timing: {
-    perfectMs: 55,
-    goodMs: 130,
-    // 이상적인 타점: 캐릭터 옆으로 이 거리, 이 높이
-    idealSideDist: 0.65,
+    reach: 1.4, // 타격 범위 반지름: 캐릭터 중심에서 공까지 수평 거리 (m)
+    sweetRatio: 0.5, // 범위 안에서 가장 좋은 배점이 나는 원의 반지름 비율 (0.5 = 반지름의 50% 지점)
+    minDistScore: 0.15, // 범위 중심/가장자리에서의 최저 거리 배점
+    // 타이밍 배점: 이상적인 순간(공이 최적 원·높이에 가장 가까울 때) 대비 오차
+    perfectMs: 55, // 이내면 타이밍 배점 1
+    goodMs: 130, // 이내면 1 → 0.6
+    worstMs: 320, // 이 오차에서 최저 0.25
     idealHeight: 0.85,
-    reach: 1.35, // 캐릭터 중심에서 공까지 수평 거리 한계 (m)
     minHeight: 0.08,
     maxHeight: 2.1,
   },
 
   // ── 드라이브 샷 (항상 유효하게 보정됨) ──
   shots: {
-    // 판정별 기본 속력(m/s)과 앞벽 목표 높이(m). 속도 차이가 확실히 느껴지게 폭을 넓게.
-    perfect: { speed: 24, wallHeight: 2.0 },
-    good: { speed: 19, wallHeight: 2.2 },
-    off: { speed: 14, wallHeight: 2.6 }, // EARLY / LATE
-    powerMin: 0.82, // 스트로크 파워 0일 때 속력 배율 (1일 때 1.0)
-    // 일찍 치면 크로스, 늦게 치면 스트레이트 (앞벽 목표 x를 코트 폭 비율만큼 이동)
-    timingAngle: 0.32,
+    // 배점(거리 × 타이밍, 0..1)에 따라 속력과 앞벽 목표 높이를 보간 → 잘 칠수록 빠르고 낮고 깊게
+    minSpeed: 12,
+    maxSpeed: 26,
+    highWall: 2.7, // 배점 0일 때 앞벽 목표 높이
+    lowWall: 1.9, // 배점 1일 때
+    perfectAt: 0.8, // 배점 이상이면 PERFECT
+    goodAt: 0.5, // 이상이면 GOOD, 미만이면 약한 타구
     wallMargin: 0.45, // 앞벽 목표 x를 옆벽에서 최소 이만큼 띄움
     minWallHeight: 0.95, // 보정 시 앞벽 목표 최저 높이 (틴 위)
     safetyTries: 10,
   },
 
   player: {
-    maxSpeed: 5.2, // m/s
-    accel: 20, // m/s²
-    decel: 26,
+    // 수동 이동만 있으므로 충분히 빠르게 (플레이 테스트로 조정)
+    maxSpeed: 7.0, // m/s
+    accel: 38, // m/s²
+    decel: 46,
     radius: 0.3,
-    // 쉬움 기본 ON: 손을 떼고 있으면 예상 타점 쪽으로 천천히 이동
-    assistSpeedRatio: 0.55,
-    squeakMinSpeed: 2.4, // 이 속도 이상에서 급정지/급전환하면 스퀵
+    squeakMinSpeed: 3.0, // 이 속도 이상에서 급정지/급전환하면 스퀵
     squeakTurnDeg: 100,
-    squeakCooldownMs: 450,
+    squeakCooldownMs: 400,
   },
 
   solo: {
@@ -119,9 +112,9 @@ export const tuning = {
 
   fx: {
     ballVisualScale: 4, // 화면상 공 크기 배율 (판정에는 영향 없음)
-    hitstopMs: { perfect: 85, good: 55, off: 35 },
+    hitstopMs: { perfect: 110, good: 75, off: 45 }, // 캐릭터·라켓까지 함께 멈춤
     // 화면 진동: 설정 '약'/'보통' 별 최대 진폭(m)과 지속시간
-    shake: { weak: 0.025, normal: 0.05, durationMs: 130 },
+    shake: { weak: 0.055, normal: 0.09, durationMs: 170 },
     flashMs: 110,
     swingTrailMs: 220,
     ballTrailMaxLen: 14, // 잔상 최대 점 개수 (빠를수록 길게)
@@ -142,8 +135,9 @@ export const tuning = {
     showContacts: false,
     predictSeconds: 3,
     timeScale: 1, // 슬로모 (1 = 정상)
-    autoplay: false, // 자동 플레이(봇): 타점으로 이동해 이상적인 순간에 스윙
+    autoplay: false, // 자동 플레이(봇): 타점으로 이동해 이상적인 순간에 맞는 손으로 클릭
     autoplayErrorMs: 0, // 봇 스윙 타이밍 오차 (판정 확인용)
+    closeup: 'off' as 'off' | 'side' | 'back' | 'front', // 캐릭터 동작 확인용 근접 카메라
     // 공 발사기: 캐릭터 위치에서 앞벽(-z) 방향으로 발사
     launcher: { y: 0.9, speed: 18, elevationDeg: 12, aimDeg: 0, serve: false },
   },

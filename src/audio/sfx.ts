@@ -1,5 +1,5 @@
 import { tuning } from '../config/tuning';
-import { SYNTH } from './synth';
+import { makeImpulse, SYNTH } from './synth';
 
 export type SfxName =
   | 'ui_hover'
@@ -24,6 +24,18 @@ export type SfxName =
   | 'match_lose'
   | 'combo_up';
 
+/** 리버브 센드 양 */
+const WET: Partial<Record<SfxName, number>> = {
+  hit_soft: 0.18,
+  hit_hard: 0.25,
+  hit_perfect: 0.35,
+  bounce_front: 0.2,
+  bounce_side: 0.15,
+  bounce_glass: 0.2,
+  bounce_floor: 0.1,
+  tin: 0.3,
+};
+
 /**
  * 효과음 재생기. 파일 음원(M5)이 등록돼 있으면 그걸, 없으면 합성음을 쓴다.
  * 재생 시 피치 ±pitchJitter 랜덤, 볼륨은 호출자가 공 속도 등으로 조절.
@@ -31,6 +43,7 @@ export type SfxName =
 class Sfx {
   private ctx: AudioContext | null = null;
   private out: GainNode | null = null;
+  private reverb: ConvolverNode | null = null;
   /** 사용자 설정 볼륨 0..1 */
   volume = 1;
 
@@ -40,6 +53,10 @@ class Sfx {
       this.ctx = new AudioContext();
       this.out = this.ctx.createGain();
       this.out.connect(this.ctx.destination);
+      // 코트 울림: 타격·바운드에만 살짝
+      this.reverb = this.ctx.createConvolver();
+      this.reverb.buffer = makeImpulse(this.ctx);
+      this.reverb.connect(this.out);
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
   }
@@ -51,7 +68,15 @@ class Sfx {
     if (v <= 0.001) return;
     const j = tuning.audio.pitchJitter;
     const p = pitch * (1 + (Math.random() * 2 - 1) * j); // FX 장식이라 Math.random 허용
-    SYNTH[name]?.(ctx, this.out, ctx.currentTime, v, p);
+    const node = ctx.createGain();
+    node.connect(this.out);
+    const wet = WET[name] ?? 0;
+    if (wet > 0 && this.reverb) {
+      const send = ctx.createGain();
+      send.gain.value = wet;
+      node.connect(send).connect(this.reverb);
+    }
+    SYNTH[name]?.(ctx, node, ctx.currentTime, v, p);
   }
 
   /** 공 속도 → 볼륨 */

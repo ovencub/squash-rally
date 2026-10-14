@@ -35,17 +35,19 @@ export function createDebugPanel(hooks: DebugHooks): GUI {
   bot.add(tuning.debug, 'autoplayErrorMs', -300, 300, 5).name('타이밍 오차(ms)');
 
   const play = gui.addFolder('조작·판정');
-  play.add(tuning.timing, 'perfectMs', 10, 150, 5).name('PERFECT 창(ms)');
-  play.add(tuning.timing, 'goodMs', 50, 300, 5).name('GOOD 창(ms)');
-  play.add(tuning.timing, 'reach', 0.6, 2.5, 0.05).name('타격 범위(m)');
-  play.add(tuning.input, 'bufferMs', 0, 300, 10).name('입력 버퍼(ms)');
-  play.add(tuning.shots.perfect, 'speed', 8, 40, 0.5).name('PERFECT 속력');
-  play.add(tuning.shots.good, 'speed', 8, 40, 0.5).name('GOOD 속력');
-  play.add(tuning.shots.off, 'speed', 8, 40, 0.5).name('EARLY/LATE 속력');
-  play.add(tuning.shots, 'timingAngle', 0, 0.5, 0.01).name('타이밍→각도');
-  play.add(tuning.player, 'maxSpeed', 2, 9, 0.1).name('이동 최고속도');
-  play.add(tuning.player, 'accel', 5, 60, 1).name('가속');
-  play.add(tuning.player, 'decel', 5, 60, 1).name('감속');
+  play.add(tuning.timing, 'reach', 0.6, 2.5, 0.05).name('타격 범위 반지름(m)');
+  play.add(tuning.timing, 'sweetRatio', 0.2, 0.9, 0.05).name('최적 원 비율');
+  play.add(tuning.timing, 'minDistScore', 0, 1, 0.05).name('거리 최저 배점');
+  play.add(tuning.timing, 'perfectMs', 10, 150, 5).name('타이밍 1점 창(ms)');
+  play.add(tuning.timing, 'goodMs', 50, 300, 5).name('타이밍 0.6점 창(ms)');
+  play.add(tuning.shots, 'minSpeed', 6, 30, 0.5).name('최저 타구 속력');
+  play.add(tuning.shots, 'maxSpeed', 10, 40, 0.5).name('최고 타구 속력');
+  play.add(tuning.shots, 'perfectAt', 0.3, 1, 0.05).name('PERFECT 기준 배점');
+  play.add(tuning.shots, 'goodAt', 0.1, 0.9, 0.05).name('GOOD 기준 배점');
+  play.add(tuning.input, 'maxAimSlope', 0.3, 3, 0.1).name('조준 최대 기울기');
+  play.add(tuning.player, 'maxSpeed', 2, 12, 0.1).name('이동 최고속도');
+  play.add(tuning.player, 'accel', 5, 80, 1).name('가속');
+  play.add(tuning.player, 'decel', 5, 80, 1).name('감속');
 
   const fx = gui.addFolder('타격감');
   fx.add(tuning.fx.hitstopMs, 'perfect', 0, 200, 5).name('히트스톱 PERFECT');
@@ -55,6 +57,7 @@ export function createDebugPanel(hooks: DebugHooks): GUI {
   fx.close();
 
   const view = gui.addFolder('표시');
+  view.add(tuning.debug, 'closeup', ['off', 'side', 'back', 'front']).name('근접 카메라');
   view.add(tuning.debug, 'showPrediction').name('예측선');
   view.add(tuning.debug, 'showContacts').name('충돌점');
   view.add(tuning.debug, 'predictSeconds', 0.5, 6, 0.1).name('예측 시간(s)');

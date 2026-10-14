@@ -4,36 +4,56 @@ import { tPosition } from '../config/court';
 import { tuning, type Difficulty } from '../config/tuning';
 import { FixedLoop } from '../core/loop';
 import { Rng } from '../core/rng';
-import { type SwingInput } from '../input/gesture';
 import { type BallContact, type Surface, type Vec3 } from '../physics/ball';
 import { predict, type Prediction } from '../physics/predict';
 import { type RallyResult } from '../rules/rally';
 import { BallView } from '../render/ball-view';
 import { CameraRig } from '../render/camera';
-import { animateCharacter, createCharacter, type Character } from '../render/character';
+import { animateCharacter, createCharacter, SWING_CONTACT, type Character } from '../render/character';
 import { createCourtMesh } from '../render/court-mesh';
 import { DebugDraw } from '../render/debug-draw';
-import { BallTrail, ImpactFx, Shake, SwingTrail, TimingGuide, WallMarks } from '../render/fx';
+import { AimGuide, BallTrail, ImpactFx, Shake, SwingTrail, TimingGuide, WallMarks } from '../render/fx';
 import { palette } from '../render/palette';
 import { createMover, moveStep, standSpotFor, type Mover } from './player';
-import { assistEnabled, type Settings } from './settings';
+import { type Settings } from './settings';
 import { SoloSession } from './solo';
-import { hitWindow, idealBallPoint, idealHitTime, inReach, judge, planDrive, type Quality } from './swing';
+import {
+  aimWallX,
+  distanceScore,
+  gradeOf,
+  handFor,
+  hitWindow,
+  horiz,
+  idealBallPoint,
+  idealHitTime,
+  inReach,
+  planDrive,
+  sweetRadius,
+  timingScore,
+  type Grade,
+  type Hand,
+  type SwingInput,
+} from './swing';
 import { World } from './world';
 
 export interface HitEvent {
-  quality: Quality;
-  errMs: number;
+  grade: Grade;
+  /** 거리 × 타이밍 배점 0..1 */
+  score: number;
+  /** 약한 쪽 요인 힌트 (PERFECT면 null) */
+  hint: string | null;
   at: Vec3;
   speed: number;
-  side: 1 | -1;
+  hand: Hand;
   newBest: boolean;
 }
+
+export type WhiffReason = 'wrongHand' | 'outOfRange' | 'noBall';
 
 export interface GameHooks {
   onHit: (e: HitEvent) => void;
   onRallyEnd: (r: RallyResult) => void;
-  onWhiff: () => void;
+  onWhiff: (reason: WhiffReason, hand: Hand) => void;
 }
 
 const BOUNCE_SFX: Record<Surface, SfxName> = {
@@ -45,9 +65,11 @@ const BOUNCE_SFX: Record<Surface, SfxName> = {
   floor: 'bounce_floor',
 };
 
+const SWING_SECONDS = 0.34;
+
 /**
- * 1인 모드 게임 진행. 시뮬레이션(World + 이동 + 스윙 판정)은 고정 타임스텝에서, 렌더/FX는 프레임마다.
- * M4에서 AI 대전 모드가 같은 구조 위에 추가된다.
+ * 1인 모드 게임 진행. 시뮬레이션(World + 이동 + 공)은 고정 타임스텝에서, 렌더/FX는 프레임마다.
+ * 조작(M3 피드백): WASD 수동 이동만, 우클릭 = 포핸드 / 좌클릭 = 백핸드, 커서 위치 = 방향.
  */
 export class Game {
   readonly scene: THREE.Scene;
@@ -65,6 +87,7 @@ export class Game {
   private swingTrail = new SwingTrail();
   private impact = new ImpactFx();
   private guide = new TimingGuide();
+  private aimGuide = new AimGuide();
   private wallMarks = new WallMarks();
   private shake = new Shake();
   readonly debugDraw = new DebugDraw();
@@ -72,20 +95,23 @@ export class Game {
 
   /** 키보드 이동 입력 (매 서브스텝 읽음) */
   moveInput = { x: 0, z: 0 };
+  /** 커서가 가리키는 바닥 지점 (main에서 갱신) */
+  aimPoint: { x: number; z: number } | null = null;
   private swingAnim: number | null = null;
-  private swingSide: 1 | -1 = 1;
+  /** 디버그: 스윙 자세 고정 (진행도) */
+  holdSwing: number | null = null;
+  private swingHand: Hand = 'fore';
   private swingCooldown = 0;
-  private pending: { input: SwingInput; pressTime: number; idealT: number; expires: number } | null = null;
   private feedTimer = 0;
   private slowmoTimer = 0;
   private pred: Prediction | null = null;
+  private ring: { t: number; point: Vec3 } | null = null;
   /** 앞벽에서 돌아오는 공이 지나온 궤적 (타이밍 판정용) */
   private trace: (Vec3 & { t: number })[] = [];
-  private ring: { t: number; point: Vec3 } | null = null;
   private tmpA = new THREE.Vector3();
   private tmpB = new THREE.Vector3();
-  /** 포/백핸드 표시용 */
-  side: 1 | -1 = 1;
+  /** 공이 지금 어느 손 쪽인지 (HUD 표시용) */
+  ballSide: Hand | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -100,28 +126,18 @@ export class Game {
     this.courtMesh = createCourtMesh(this.world.court);
     this.player = createCharacter(palette.playerShirt);
     const t = tPosition(this.world.court);
-    this.mover = createMover(t.x + 0.3, t.z + 0.8);
-    scene.add(
-      this.courtMesh,
-      this.player.root,
-      this.ballView.group,
-      this.ballTrail.group,
-      this.swingTrail.mesh,
-      this.impact.group,
-      this.guide.group,
-      this.wallMarks.group,
-      this.debugDraw.group,
-    );
+    this.mover = createMover(t.x, t.z + 0.6);
+    scene.add(...this.objects());
 
     this.world.bus.on('contact', (ct) => this.onContact(ct));
+    this.world.bus.on('rallyEnd', (r) => this.onRallyEnd(r));
     this.world.bus.on('launch', () => (this.trace = []));
     this.world.bus.on('feed', () => (this.trace = []));
-    this.world.bus.on('rallyEnd', (r) => this.onRallyEnd(r));
     this.feedTimer = 0.8;
   }
 
-  dispose(): void {
-    this.scene.remove(
+  private objects(): THREE.Object3D[] {
+    return [
       this.courtMesh,
       this.player.root,
       this.ballView.group,
@@ -129,9 +145,14 @@ export class Game {
       this.swingTrail.mesh,
       this.impact.group,
       this.guide.group,
+      this.aimGuide.group,
       this.wallMarks.group,
       this.debugDraw.group,
-    );
+    ];
+  }
+
+  dispose(): void {
+    this.scene.remove(...this.objects());
   }
 
   resize(aspect: number): void {
@@ -156,39 +177,30 @@ export class Game {
     this.mover.z = z;
   }
 
-  // ── 입력 ──
+  // ── 입력: 클릭 스윙 ──
 
   swing(input: SwingInput): void {
     if (this.paused || this.swingCooldown > 0) return;
     const w = this.world;
     const b = w.ball;
-    this.swingCooldown = tuning.input.swingCooldownMs / 1000;
-    this.swingAnim = 0;
-    this.swingSide = b && b.pos.x < this.mover.x ? -1 : 1;
+    this.swingHand = input.hand;
 
-    if (!b || w.rally.phase !== 'returning') {
-      this.whiff();
-      return;
-    }
+    if (!b || w.rally.phase !== 'returning') return this.whiff('noBall', input.hand);
+    if (!inReach(b.pos, this.playerPos)) return this.whiff('outOfRange', input.hand);
+    // 포핸드는 공이 오른쪽 절반, 백핸드는 왼쪽 절반일 때만
+    if (handFor(b.pos, this.playerPos) !== input.hand) return this.whiff('wrongHand', input.hand);
+
     const pred = predict(b, w.court, 2.5, 1);
     const win = hitWindow(pred, b.time, true, w.rally.floorBounces);
     const ideal = win ? this.idealFor(pred, win) : null;
-    if (!win || !ideal) {
-      this.whiff();
-      return;
-    }
-    if (inReach(b.pos, this.playerPos)) {
-      this.executeHit(input, (b.time - ideal.t) * 1000);
-      return;
-    }
-    // 입력 버퍼: 조금 일찍 휘둘러도 공이 범위에 들어오는 순간 친다
-    const buf = tuning.input.bufferMs / 1000;
-    const enters = pred.points.find((p) => p.t >= win.from && p.t <= win.until && inReach(p, this.playerPos));
-    if (enters && enters.t - b.time <= buf) {
-      this.pending = { input, pressTime: b.time, idealT: ideal.t, expires: enters.t + 0.05 };
-      return;
-    }
-    this.whiff();
+    const errMs = ideal ? (b.time - ideal.t) * 1000 : 0;
+    this.executeHit(input, errMs);
+  }
+
+  private whiff(reason: WhiffReason, hand: Hand): void {
+    this.swingAnim = 0;
+    this.swingCooldown = tuning.input.whiffCooldownMs / 1000;
+    this.hooks.onWhiff(reason, hand);
   }
 
   /** 지나온 궤적 + 예측 궤적에서 현재 위치 기준 이상적 타격 순간 */
@@ -197,64 +209,54 @@ export class Game {
     return idealHitTime([...this.trace, ...pred.points], { from, until: win.until }, this.playerPos);
   }
 
-  private whiff(): void {
-    this.hooks.onWhiff();
-  }
-
   private executeHit(input: SwingInput, errMs: number): void {
     const w = this.world;
     const b = w.ball!;
-    const quality = judge(errMs);
-    const side: 1 | -1 = b.pos.x >= this.mover.x ? 1 : -1;
-    this.swingSide = side;
-    const from = { ...b.pos };
-    const plan = planDrive({ from, quality, errMs, power: input.power, aim: input.aim, side }, w.court);
-    w.launch(from, plan.vel, 'A', false);
-    const newBest = this.session.onHit(quality);
+    const dist = horiz(b.pos, this.playerPos);
+    const ds = distanceScore(dist) ?? 0;
+    const ts = timingScore(errMs);
+    const score = ds * ts;
+    const grade = gradeOf(score);
+    let hint: string | null = null;
+    if (grade !== 'perfect') {
+      if (ts < ds) hint = errMs < 0 ? '조금 빨라요' : '조금 늦어요';
+      else hint = dist < sweetRadius() ? '너무 가까워요' : '너무 멀어요';
+    }
 
-    // 타격감: 히트스톱 + 진동 + 섬광 + 소리
+    const from = { ...b.pos };
+    const wallX = aimWallX(this.playerPos, input.aim, w.court);
+    const plan = planDrive(from, score, wallX, w.court);
+    w.launch(from, plan.vel, 'A', false);
+    const newBest = this.session.onHit(grade);
+
+    this.swingAnim = SWING_CONTACT;
+    this.swingCooldown = tuning.input.swingCooldownMs / 1000;
+
+    // 타격감: 히트스톱(캐릭터까지 멈춤) + 진동 + 섬광 + 소리
     const F = tuning.fx;
-    const strength = quality === 'perfect' ? 1 : quality === 'good' ? 0.6 : 0.3;
-    this.loop.hitstop(quality === 'perfect' ? F.hitstopMs.perfect : quality === 'good' ? F.hitstopMs.good : F.hitstopMs.off);
+    const strength = 0.25 + 0.75 * score;
+    this.loop.hitstop(grade === 'perfect' ? F.hitstopMs.perfect : grade === 'good' ? F.hitstopMs.good : F.hitstopMs.off);
     const amp = this.settings.shake === 'off' ? 0 : this.settings.shake === 'weak' ? F.shake.weak : F.shake.normal;
-    this.shake.kick(amp * (0.4 + 0.6 * strength) * (0.7 + 0.3 * input.power));
+    this.shake.kick(amp * strength);
     this.impact.burst(from, strength);
     this.swingTrail.setWidth(0.6 + 0.4 * strength);
-    sfx.play(quality === 'perfect' ? 'hit_perfect' : quality === 'good' ? 'hit_hard' : 'hit_soft', 0.6 + 0.4 * strength);
+    sfx.play(grade === 'perfect' ? 'hit_perfect' : grade === 'good' ? 'hit_hard' : 'hit_soft', 0.55 + 0.45 * strength);
     if (newBest && this.session.combo > 1) sfx.play('combo_up', 0.6);
-    this.hooks.onHit({ quality, errMs, at: from, speed: plan.speed, side, newBest });
+    this.hooks.onHit({ grade, score, hint, at: from, speed: plan.speed, hand: input.hand, newBest });
   }
 
   // ── 시뮬레이션 (고정 타임스텝) ──
 
   private simStep(dt: number): void {
     const w = this.world;
-    // 이동: 키 입력이 없고 자동 보조가 켜져 있으면 예상 타점 옆 자리로 천천히
     const hasInput = this.moveInput.x !== 0 || this.moveInput.z !== 0;
-    let target: { x: number; z: number } | null = null;
-    const auto = tuning.debug.autoplay;
-    if (!hasInput && this.ring && (auto || assistEnabled(this.settings, this.difficulty))) {
-      target = standSpotFor(this.ring.point, this.playerPos, w.court);
-    }
-    const ratio = hasInput || auto ? 1 : tuning.player.assistSpeedRatio;
-    const squeak = moveStep(this.mover, dt, w.court, hasInput ? this.moveInput : null, target, ratio);
+    // 이동은 WASD 수동만. 디버그 봇일 때만 타점 옆 자리로 자동 이동
+    const target = !hasInput && tuning.debug.autoplay && this.ring ? standSpotFor(this.ring.point, this.playerPos, w.court) : null;
+    const squeak = moveStep(this.mover, dt, w.court, hasInput ? this.moveInput : null, target);
     if (squeak) sfx.play('squeak', 0.7);
 
     w.step(dt);
     if (w.ball && w.rally.phase === 'returning') this.trace.push({ ...w.ball.pos, t: w.ball.time });
-
-    // 버퍼된 스윙 처리
-    const b = w.ball;
-    if (this.pending && b) {
-      if (w.rally.phase === 'returning' && inReach(b.pos, this.playerPos)) {
-        const p = this.pending;
-        this.pending = null;
-        this.executeHit(p.input, (p.pressTime - p.idealT) * 1000);
-      } else if (b.time > this.pending.expires || w.rally.phase !== 'returning') {
-        this.pending = null;
-        this.whiff();
-      }
-    }
   }
 
   private onContact(ct: BallContact): void {
@@ -267,7 +269,6 @@ export class Game {
 
   private onRallyEnd(r: RallyResult): void {
     this.session.onMiss();
-    this.pending = null;
     this.slowmoTimer = tuning.fx.slowmoMs / 1000;
     this.feedTimer = tuning.solo.feedDelayMs / 1000;
     sfx.play('point_lose', 0.7);
@@ -287,21 +288,24 @@ export class Game {
     this.world.feed(from, vel, 'A');
   }
 
-  /** 디버그 봇: 이상적인 타격 시각(+설정 오차)에 스윙 */
+  /** 디버그 봇: 이상적인 타격 시각(+설정 오차)에 맞는 손으로 클릭 */
   private autoSwing(): void {
     const w = this.world;
     const b = w.ball;
-    if (!b || !this.pred || w.rally.phase !== 'returning' || this.pending || this.swingCooldown > 0) return;
+    if (!b || !this.pred || w.rally.phase !== 'returning' || this.swingCooldown > 0) return;
     const win = hitWindow(this.pred, b.time, true, w.rally.floorBounces);
     const ideal = win ? this.idealFor(this.pred, win) : null;
     if (!ideal) return;
     const at = ideal.t + tuning.debug.autoplayErrorMs / 1000;
-    if (b.time >= at - 1 / 120) this.swing({ power: 1, aim: 0, kind: 'stroke', time: performance.now() });
+    if (b.time >= at - 1 / 120 && inReach(b.pos, this.playerPos)) {
+      this.swing({ hand: handFor(b.pos, this.playerPos), aim: this.aimPoint });
+    }
   }
 
   // ── 프레임 업데이트 ──
 
   update(realDt: number): void {
+    const frozen = this.loop.inHitstop;
     if (!this.paused) {
       if (this.slowmoTimer > 0) {
         this.slowmoTimer -= realDt;
@@ -329,33 +333,38 @@ export class Game {
           return Math.hypot(s.x - this.mover.x, s.z - this.mover.z) < 0.4;
         })()
       : false;
-    // 공이 날아가는 동안(내 샷이 앞벽으로 갈 때)은 링을 흐리게 보이지 않게
     const showRing = this.ring && w.rally.phase === 'returning' ? this.ring : null;
-    this.guide.update(showRing?.point ?? null, showRing ? showRing.t - b!.time : 0, ringGood, this.playerPos, true);
-    if (this.ring) this.side = this.ring.point.x >= this.mover.x ? 1 : -1;
+    this.ballSide = b && w.rally.phase === 'returning' ? handFor(showRing?.point ?? b.pos, this.playerPos) : null;
+    const liveHand = b && w.rally.phase === 'returning' && inReach(b.pos, this.playerPos) ? handFor(b.pos, this.playerPos) : null;
+    this.guide.update(showRing?.point ?? null, showRing ? showRing.t - b!.time : 0, ringGood, this.playerPos, liveHand);
+    this.aimGuide.update(this.playerPos, aimWallX(this.playerPos, this.aimPoint, w.court), !this.paused && !!this.aimPoint);
     if (tuning.debug.autoplay && !this.paused) this.autoSwing();
 
     this.debugDraw.setPrediction(tuning.debug.showPrediction ? this.pred : null, { line: true, contacts: tuning.debug.showContacts });
 
-    // 캐릭터
-    if (this.swingAnim !== null) {
-      this.swingAnim += realDt / 0.26;
+    // 캐릭터 (히트스톱 중엔 임팩트 자세로 멈춤)
+    if (this.holdSwing !== null) this.swingAnim = this.holdSwing;
+    else if (this.swingAnim !== null && !frozen && !this.paused) {
+      this.swingAnim += realDt / SWING_SECONDS;
       if (this.swingAnim >= 1) this.swingAnim = null;
     }
     this.player.root.position.x = this.mover.x;
     this.player.root.position.z = this.mover.z;
-    animateCharacter(this.player, realDt, {
-      speed: Math.hypot(this.mover.vx, this.mover.vz),
+    animateCharacter(this.player, this.paused ? 0 : realDt, {
+      vx: this.mover.vx,
+      vz: this.mover.vz,
+      maxSpeed: tuning.player.maxSpeed,
       swing: this.swingAnim,
-      side: this.swingSide,
+      hand: this.swingHand,
+      frozen,
     });
     this.player.root.updateMatrixWorld(true);
-    if (this.swingAnim !== null) {
+    if (this.swingAnim !== null && !frozen) {
       this.player.hand.getWorldPosition(this.tmpA);
       this.player.racketHead.getWorldPosition(this.tmpB);
       this.swingTrail.push(this.tmpA, this.tmpB);
     }
-    this.swingTrail.update(realDt);
+    this.swingTrail.update(frozen ? 0 : realDt);
 
     // 공 + FX
     this.ballView.update(b);
@@ -367,5 +376,19 @@ export class Game {
     const s = this.shake.update(realDt);
     this.rig.setShake(s.x, s.y);
     this.rig.update(realDt, this.playerPos);
+    const cu = tuning.debug.closeup;
+    if (cu !== 'off') {
+      const cam = this.rig.camera;
+      const o = { side: [3.2, 1.3, 0], back: [0, 1.6, 3.2], front: [0, 1.4, -3.2] }[cu];
+      cam.position.set(this.mover.x + o[0], o[1], this.mover.z + o[2]);
+      cam.lookAt(this.mover.x, 0.95, this.mover.z);
+    }
+  }
+
+  /** 디버그: 스윙 자세를 보여주기 (t = null이면 해제) */
+  debugPose(hand: Hand, t: number | null): void {
+    this.swingHand = hand;
+    this.holdSwing = t;
+    if (t === null) this.swingAnim = null;
   }
 }

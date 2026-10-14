@@ -84,13 +84,13 @@ export class Screens {
   howto(a: { back: () => void }): void {
     this.show(
       `<h2>조작법</h2>
-       <div class="howto-demo"><i></i></div>
-       <p>마우스를 누른 채 <b>↓당겼다 ↑밀기</b> = 드라이브!</p>
        <ol class="howto-list">
-         <li><b>WASD / 방향키</b>로 바닥의 <b>빨간 링</b> 옆으로 이동</li>
-         <li>링이 좁혀져 <b>공이 옆에 왔을 때</b> 스윙 → <b>PERFECT</b></li>
-         <li>일찍 치면 <b>크로스</b>, 늦게 치면 <b>스트레이트</b>로 날아가요</li>
-         <li>짧게 <b>클릭</b>해도 칠 수 있지만 힘이 약해요</li>
+         <li><b>WASD / 방향키</b>로 직접 이동해요 (자동 이동 없음)</li>
+         <li>캐릭터 주변 원이 <b>타격 범위</b>예요. 오른쪽 절반 = 포핸드, 왼쪽 절반 = 백핸드</li>
+         <li>공이 <b>오른쪽</b>에 있으면 <b>우클릭</b>, <b>왼쪽</b>이면 <b>좌클릭</b>. 반대 손이면 헛스윙!</li>
+         <li>공이 <b>노란 점선 원</b>(범위의 절반 지점) 위에 있을 때, <b>타이밍</b>까지 맞으면 <b>PERFECT</b></li>
+         <li>클릭할 때 <b>커서가 있는 방향</b>으로 공이 날아가요</li>
+         <li>바닥의 <b>빨간 링</b>은 공이 칠 만한 높이로 내려올 곳이에요</li>
          <li>바닥에 <b>두 번 튀기 전에</b> 쳐야 해요</li>
        </ol>
        <div class="btns"><button class="btn" data-act="back">돌아가기</button></div>`,
@@ -105,18 +105,12 @@ export class Screens {
       `<h2>설정</h2>
        <div class="row"><label>효과음</label><input type="range" min="0" max="1" step="0.05" value="${s.volume}" data-range="volume"></div>
        <div class="row"><label>화면 진동</label>${seg('shake', [['off', '끔'], ['weak', '약'], ['normal', '보통']], s.shake)}</div>
-       <div class="row"><label>자동 위치 보조</label>${seg('assist', [['easyOnly', '쉬움만'], ['on', '항상'], ['off', '끔']], s.assist)}</div>
-       <div class="row"><label>스윙 방향 반전</label>${seg('invert', [['0', '↓↑ 기본'], ['1', '↑↓ 반전']], tuning.input.invertStroke ? '1' : '0')}</div>
        <div class="btns"><button class="btn" data-act="back">확인</button></div>`,
       a,
     );
     this.el.querySelectorAll<HTMLButtonElement>('[data-seg]').forEach((b) =>
       b.addEventListener('click', () => {
-        const k = b.dataset.seg!;
-        const v = b.dataset.v!;
-        if (k === 'shake') s.shake = v as Settings['shake'];
-        if (k === 'assist') s.assist = v as Settings['assist'];
-        if (k === 'invert') tuning.input.invertStroke = s.invertStroke = v === '1';
+        if (b.dataset.seg === 'shake') s.shake = b.dataset.v as Settings['shake'];
         b.parentElement!.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
         sfx.play('ui_click');
         saveSettings(s);

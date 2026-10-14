@@ -184,25 +184,40 @@ function dashedRing(segments: number, fill: number): THREE.BufferGeometry {
   return g;
 }
 
-/** 타이밍 가이드: 예상 타점 바닥에 좁혀지는 빨간 점선 링 + 캐릭터 타격 범위 원 */
+/**
+ * 타이밍 가이드 (기획서 3-3 + M3 피드백):
+ * - 예상 타점 바닥에 좁혀지는 빨간 점선 링 (제자리면 초록)
+ * - 캐릭터 주변 타격 범위 원 + 최적 원(반지름 × sweetRatio) + 좌(백핸드)/우(포핸드) 구분선
+ */
 export class TimingGuide {
   readonly group = new THREE.Group();
   private ring: THREE.Mesh;
   private dot: THREE.Mesh;
-  private reach: THREE.Mesh;
+  private range = new THREE.Group();
+  private sweet: THREE.Mesh;
+  private outer: THREE.Mesh;
+  private halfFore: THREE.Mesh;
+  private halfBack: THREE.Mesh;
 
   constructor() {
     const mat = (color: number, opacity: number) =>
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false });
     this.ring = new THREE.Mesh(dashedRing(18, 0.6), mat(0xff3b4e, 0.95));
     this.dot = new THREE.Mesh(new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2), mat(0xff3b4e, 0.45));
-    this.reach = new THREE.Mesh(new THREE.RingGeometry(0.97, 1, 48).rotateX(-Math.PI / 2), mat(0x58b8ff, 0.3));
-    for (const m of [this.ring, this.dot, this.reach]) m.renderOrder = 12;
-    this.group.add(this.ring, this.dot, this.reach);
+    // 반원 2개: 오른쪽 = 포핸드(코랄), 왼쪽 = 백핸드(하늘)
+    this.halfFore = new THREE.Mesh(new THREE.CircleGeometry(1, 32, -Math.PI / 2, Math.PI).rotateX(-Math.PI / 2), mat(0xff7a5c, 0.1));
+    this.halfBack = new THREE.Mesh(new THREE.CircleGeometry(1, 32, Math.PI / 2, Math.PI).rotateX(-Math.PI / 2), mat(0x58b8ff, 0.1));
+    this.outer = new THREE.Mesh(new THREE.RingGeometry(0.975, 1, 64).rotateX(-Math.PI / 2), mat(0xffffff, 0.35));
+    this.sweet = new THREE.Mesh(dashedRing(24, 0.55), mat(0xffe066, 0.75));
+    const divider = new THREE.Mesh(new THREE.PlaneGeometry(0.025, 2).rotateX(-Math.PI / 2), mat(0xffffff, 0.3));
+    this.range.add(this.halfFore, this.halfBack, this.outer, this.sweet, divider);
+    this.range.userData.divider = divider;
+    for (const m of [this.ring, this.dot, this.halfFore, this.halfBack, this.outer, this.sweet, divider]) m.renderOrder = 12;
+    this.group.add(this.range, this.ring, this.dot);
   }
 
-  /** target: 예상 타점, remain: 남은 시간(s), good: 캐릭터가 제자리에 있음 */
-  update(target: Vec3 | null, remain: number, good: boolean, player: { x: number; z: number }, showReach: boolean): void {
+  /** target: 예상 타점, remain: 남은 시간(s), good: 캐릭터가 제자리에 있음, hand: 공이 있는 쪽 강조 */
+  update(target: Vec3 | null, remain: number, good: boolean, player: { x: number; z: number }, hand: 'fore' | 'back' | null): void {
     this.ring.visible = this.dot.visible = !!target;
     if (target) {
       const k = Math.max(0, Math.min(1, remain / 0.9));
@@ -216,9 +231,47 @@ export class TimingGuide {
       (this.ring.material as THREE.MeshBasicMaterial).color.setHex(color);
       (this.dot.material as THREE.MeshBasicMaterial).color.setHex(color);
     }
-    this.reach.visible = showReach;
-    this.reach.position.set(player.x, 0.01, player.z);
-    this.reach.scale.setScalar(tuning.timing.reach);
+    const R = tuning.timing.reach;
+    this.range.position.set(player.x, 0.01, player.z);
+    this.halfFore.scale.setScalar(R);
+    this.halfBack.scale.setScalar(R);
+    this.outer.scale.setScalar(R);
+    this.sweet.scale.setScalar(R * tuning.timing.sweetRatio);
+    (this.range.userData.divider as THREE.Mesh).scale.set(1, 1, R);
+    (this.halfFore.material as THREE.MeshBasicMaterial).opacity = hand === 'fore' ? 0.22 : 0.08;
+    (this.halfBack.material as THREE.MeshBasicMaterial).opacity = hand === 'back' ? 0.22 : 0.08;
+  }
+}
+
+/** 조준선: 캐릭터에서 앞벽 목표점까지 바닥 점선 + 앞벽 표식 */
+export class AimGuide {
+  readonly group = new THREE.Group();
+  private line: THREE.Line;
+  private mark: THREE.Mesh;
+
+  constructor() {
+    this.line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]),
+      new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.18, gapSize: 0.14, transparent: true, opacity: 0.45, depthWrite: false }),
+    );
+    this.mark = new THREE.Mesh(
+      new THREE.RingGeometry(0.1, 0.15, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }),
+    );
+    this.line.renderOrder = this.mark.renderOrder = 13;
+    this.group.add(this.line, this.mark);
+  }
+
+  update(player: { x: number; z: number }, wallX: number, visible: boolean): void {
+    this.group.visible = visible;
+    if (!visible) return;
+    const pos = this.line.geometry.attributes.position as THREE.BufferAttribute;
+    pos.setXYZ(0, player.x, 0.015, player.z);
+    pos.setXYZ(1, wallX, 0.015, 0.02);
+    pos.needsUpdate = true;
+    this.line.computeLineDistances();
+    this.line.geometry.computeBoundingSphere();
+    this.mark.position.set(wallX, (tuning.shots.highWall + tuning.shots.lowWall) / 2, 0.04);
   }
 }
 

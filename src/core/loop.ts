@@ -33,6 +33,11 @@ export class FixedLoop {
     if (n === tuning.physics.maxSubstepsPerFrame) this.acc = 0; // 탭 전환 등으로 밀린 시간은 버림
   }
 
+  /** 히트스톱으로 멈춰 있는 중 */
+  get inHitstop(): boolean {
+    return this.hitstopLeft > 0;
+  }
+
   /** 렌더 보간용 (0..1) */
   get alpha(): number {
     return this.acc * tuning.physics.substepHz;
