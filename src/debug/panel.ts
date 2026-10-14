@@ -15,7 +15,7 @@ export function createDebugPanel(hooks: DebugHooks): GUI {
 
   // ── 발사기 ──
   const L = tuning.debug.launcher;
-  const launch = gui.addFolder('공 발사기 (Space = 발사, 캐릭터 위치)');
+  const launch = gui.addFolder('공 발사기 (캐릭터 위치에서)');
   launch.add(L, 'speed', 2, 40, 0.5).name('속력 m/s');
   launch.add(L, 'elevationDeg', -30, 60, 0.5).name('상하 각도°');
   launch.add(L, 'aimDeg', -45, 45, 0.5).name('좌우 각도°');
@@ -28,6 +28,31 @@ export function createDebugPanel(hooks: DebugHooks): GUI {
     for (const p of hooks.presets()) presetFolder.add({ go: p.run }, 'go').name(p.label);
   };
   rebuildPresets();
+  launch.close();
+
+  const bot = gui.addFolder('자동 플레이 (봇)');
+  bot.add(tuning.debug, 'autoplay').name('켜기');
+  bot.add(tuning.debug, 'autoplayErrorMs', -300, 300, 5).name('타이밍 오차(ms)');
+
+  const play = gui.addFolder('조작·판정');
+  play.add(tuning.timing, 'perfectMs', 10, 150, 5).name('PERFECT 창(ms)');
+  play.add(tuning.timing, 'goodMs', 50, 300, 5).name('GOOD 창(ms)');
+  play.add(tuning.timing, 'reach', 0.6, 2.5, 0.05).name('타격 범위(m)');
+  play.add(tuning.input, 'bufferMs', 0, 300, 10).name('입력 버퍼(ms)');
+  play.add(tuning.shots.perfect, 'speed', 8, 40, 0.5).name('PERFECT 속력');
+  play.add(tuning.shots.good, 'speed', 8, 40, 0.5).name('GOOD 속력');
+  play.add(tuning.shots.off, 'speed', 8, 40, 0.5).name('EARLY/LATE 속력');
+  play.add(tuning.shots, 'timingAngle', 0, 0.5, 0.01).name('타이밍→각도');
+  play.add(tuning.player, 'maxSpeed', 2, 9, 0.1).name('이동 최고속도');
+  play.add(tuning.player, 'accel', 5, 60, 1).name('가속');
+  play.add(tuning.player, 'decel', 5, 60, 1).name('감속');
+
+  const fx = gui.addFolder('타격감');
+  fx.add(tuning.fx.hitstopMs, 'perfect', 0, 200, 5).name('히트스톱 PERFECT');
+  fx.add(tuning.fx.hitstopMs, 'good', 0, 200, 5).name('히트스톱 GOOD');
+  fx.add(tuning.fx.shake, 'weak', 0, 0.15, 0.005).name('진동 약');
+  fx.add(tuning.fx.shake, 'normal', 0, 0.15, 0.005).name('진동 보통');
+  fx.close();
 
   const view = gui.addFolder('표시');
   view.add(tuning.debug, 'showPrediction').name('예측선');

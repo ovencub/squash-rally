@@ -38,3 +38,89 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1238; col
 }
 .banner .d { margin-top: 6px; font-size: 16px; padding: 4px 12px; border-radius: 999px; background: rgba(26, 18, 56, 0.7); display: inline-block; }
 .banner.win .t { color: var(--teal); }
+
+/* ── 메뉴 ── */
+.screen {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(26, 18, 56, 0.55), rgba(26, 18, 56, 0.85));
+  pointer-events: auto;
+}
+.panel {
+  min-width: 340px; max-width: min(560px, calc(100vw - 32px)); padding: 28px 28px 24px; border-radius: 18px;
+  background: rgba(42, 31, 82, 0.92); border: 2px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 0 rgba(0, 0, 0, 0.25); text-align: center;
+}
+.logo {
+  font-size: clamp(40px, 7vw, 76px); font-weight: 900; letter-spacing: 0.04em; line-height: 1;
+  color: var(--yellow); -webkit-text-stroke: 4px #1a1238; paint-order: stroke fill; text-shadow: 0 6px 0 #1a1238;
+}
+.logo small { display: block; margin-top: 10px; font-size: 15px; letter-spacing: 0.3em; color: var(--white); -webkit-text-stroke: 0; text-shadow: none; }
+.panel h2 { margin: 0 0 18px; font-size: 26px; font-weight: 900; letter-spacing: 0.04em; }
+.panel p { margin: 6px 0; line-height: 1.6; color: #ddd6f3; }
+.btns { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
+.btn {
+  font: inherit; font-size: 18px; font-weight: 800; padding: 13px 20px; border-radius: 12px; cursor: pointer;
+  border: 0; color: #1a1238; background: var(--white); box-shadow: 0 5px 0 #a99fc9; transition: transform 0.06s;
+}
+.btn:hover { transform: translateY(-2px); background: #fff; }
+.btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #a99fc9; }
+.btn.primary { background: var(--yellow); box-shadow: 0 5px 0 #c48f12; }
+.btn.ghost { background: transparent; color: var(--white); box-shadow: inset 0 0 0 2px rgba(255,255,255,0.3); }
+.btn[disabled] { opacity: 0.45; cursor: not-allowed; transform: none; }
+.btn .sub { display: block; font-size: 12px; font-weight: 600; opacity: 0.7; margin-top: 2px; }
+.diff-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px; }
+.diff-grid .btn { padding: 16px 8px; }
+.stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 18px 0 4px; }
+.stats div { background: rgba(0,0,0,0.2); border-radius: 12px; padding: 12px 6px; }
+.stats b { display: block; font-size: 30px; color: var(--yellow); }
+.stats span { font-size: 13px; color: #cfc6ea; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 14px 0; text-align: left; }
+.row label { font-weight: 700; }
+.seg { display: inline-flex; border-radius: 10px; overflow: hidden; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.25); }
+.seg button { font: inherit; font-size: 14px; font-weight: 700; padding: 8px 12px; border: 0; background: transparent; color: var(--white); cursor: pointer; }
+.seg button.on { background: var(--yellow); color: #1a1238; }
+input[type=range] { width: 180px; accent-color: var(--yellow); }
+.howto-demo { position: relative; height: 120px; margin: 10px auto 6px; width: 120px; border-radius: 14px; background: rgba(0,0,0,0.25); }
+.howto-demo i { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px; border-radius: 50%; background: var(--yellow); animation: stroke 1.6s infinite; }
+@keyframes stroke {
+  0% { transform: translateY(-8px); } 35% { transform: translateY(26px); }
+  55% { transform: translateY(-34px); opacity: 1; } 75%, 100% { transform: translateY(-34px); opacity: 0; }
+}
+.howto-list { text-align: left; margin: 14px 0 0; padding-left: 20px; line-height: 1.9; color: #e6dff8; }
+.howto-list b { color: var(--yellow); }
+
+/* ── 인게임 HUD ── */
+.combo { position: absolute; left: 22px; top: 14px; text-align: left; }
+.combo .n {
+  font-size: 54px; font-weight: 900; line-height: 1; color: var(--white);
+  -webkit-text-stroke: 3px #1a1238; paint-order: stroke fill; text-shadow: 0 4px 0 #1a1238; display: inline-block;
+}
+.combo .n.punch { animation: punch 0.25s ease-out; }
+@keyframes punch { 0% { transform: scale(1.45); color: var(--yellow); } 100% { transform: scale(1); } }
+.combo .l { font-size: 12px; font-weight: 800; letter-spacing: 0.3em; color: var(--yellow); }
+.combo .s { margin-top: 4px; font-size: 13px; color: #ddd6f3; text-shadow: 0 1px 2px #000; }
+.side-label { position: absolute; left: 18px; bottom: 16px; font-size: 15px; font-weight: 800; color: var(--coral); text-shadow: 0 1px 2px #000; }
+.pause-btn { position: absolute; right: 16px; top: 14px; pointer-events: auto; font: inherit; font-weight: 900; font-size: 18px;
+  width: 44px; height: 44px; border-radius: 12px; border: 0; background: rgba(26,18,56,0.6); color: #fff; cursor: pointer; }
+.popup {
+  position: absolute; transform: translate(-50%, -50%); font-weight: 900; font-size: 30px; white-space: nowrap;
+  -webkit-text-stroke: 3px #1a1238; paint-order: stroke fill; animation: popup 0.75s ease-out forwards; pointer-events: none;
+}
+.popup.perfect { color: var(--yellow); font-size: 38px; }
+.popup.good { color: var(--teal); }
+.popup.early, .popup.late { color: #fff; font-size: 24px; }
+.popup.whiff { color: #b9b0d6; font-size: 20px; }
+@keyframes popup {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(0.6); }
+  15% { opacity: 1; transform: translate(-50%, -60%) scale(1.15); }
+  30% { transform: translate(-50%, -70%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -150%) scale(1); }
+}
+.tutorial {
+  position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%); padding: 14px 22px; border-radius: 14px;
+  background: rgba(26,18,56,0.85); font-size: 18px; font-weight: 700; text-align: center; line-height: 1.6;
+  animation: fadeout 4.5s forwards;
+}
+.tutorial b { color: var(--yellow); }
+@keyframes fadeout { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+.hidden { display: none !important; }

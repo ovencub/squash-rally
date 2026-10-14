@@ -85,19 +85,22 @@ WSF 기준값(배율 1.0):
 - `par.ts`: `MatchState`, `awardRally(state, winner)`. 11점 선취, 10:10 이후 2점 차, 2게임 선취 승. 서브권: 랠리 승자. 연속 서브 시 박스 좌↔우 교대, 서브권 이동 시 새 서버는 오른쪽 박스 기본.
 - `serve.ts`: 서브 박스/리시브 사각형 영역 계산 헬퍼.
 
-### input
-- `gesture.ts` (순수): 입력 = 포인터 샘플 `{t, x, y}[]`(화면 정규화 좌표, 위가 -y). 출력 = `{shot, power(0..1), aim(-1..1)} | null`.
-  - 누른 시간 < `tapMaxMs` 이고 총 이동 < `tapMaxDist` → `BLOCK`.
-  - 최종 스트로크 = 마지막 방향 전환점 이후 구간. 위로(-y) 밀면 `DRIVE`, 아래로 내리면 `DROP` (`invertDriveDrop`이면 반대). 사전 반대방향 와인드업은 있으면 파워 보너스, 없어도 인정.
-  - power = 스트로크 속도 / `maxStrokeSpeed`, 상한 1.
-  - aim = 스트로크 수평 성분 / 수직 성분, `[-1,1]` 클램프.
-- 입력 버퍼: 제스처 완성 시각부터 `bufferMs` 동안 타격 가능 구간 진입을 기다림.
+### input  (M1 피드백으로 변경: 샷 = 드라이브 하나)
+- `gesture.ts` (순수, `GestureTracker`): 포인터 샘플(화면 높이로 정규화) → `SwingInput {power, aim, kind}`.
+  - 누른 채 `strokeWindowMs` 안에 가장 당긴 지점에서 위로 `strokeMinDist` 이상 밀면 즉시 스윙(`stroke`). 다시 당겨야 다음 스윙.
+  - 짧게 클릭(`tapMaxMs`, `tapMaxDist` 이내) → `tap` (파워 `tapPower`).
+  - power = 스트로크 속도 / `maxStrokeSpeed` (상한 1), aim = 좌우 기울기.
+  - `invertStroke`: 위→아래 스트로크로 반전 (설정 화면).
+- 입력 버퍼: 공이 타격 범위에 들어오기 `bufferMs` 전에 휘둘러도 들어오는 순간 친다.
 - `keyboard.ts`: WASD/방향키 → 이동 벡터.
 
 ### game
 - `player.ts`: 가속/감속 관성, 최고속도 상한, 급정지·급전환(속도 방향 변화 > 임계) 시 `squeak` 이벤트(쿨다운). 자동 위치 보조: 입력 없을 때 예측 타점 쪽으로 `assistSpeed`로 이동(easy 기본 ON, 설정에서 토글).
-- `swing.ts`: 타격 가능 조건 = 공이 캐릭터 기준 반경 `reach` 이내 & 높이 구간. 타이밍 오차 = |입력 시점 − 이상 타점 시각|. `PERFECT ≤ perfectMs < GOOD ≤ goodMs < LATE/EARLY`. 샷 프로파일(목표 앞벽 높이, 속도, 스핀) + 파워 + 조준 → 앞벽 목표점으로 출사 속도 역산, 판정에 따라 각도/높이 가우시안 오차.
-  - 포/백핸드: 공 x > 캐릭터 x → 포핸드.
+- `swing.ts` (순수): 타격 가능 = 앞벽에서 돌아온 공이 캐릭터 수평 `reach` 이내 & 높이 구간, 투바운드 전.
+  - 이상 타격 시각 = (지나온 궤적 + 예측 궤적) 중 공이 캐릭터 옆 `idealSideDist`, 높이 `idealHeight`에 가장 가까운 순간. 오차 = 스윙 시각 − 이상 시각.
+  - `PERFECT ≤ perfectMs < GOOD ≤ goodMs < EARLY/LATE`.
+  - `planDrive`: 판정별 속도·앞벽 높이 + 파워 + 타이밍 각도(일찍=크로스, 늦게=스트레이트) → `aimAtFrontWall`. **발사 전 `isValidShot`으로 검증하고 무효면 높이·속도·각도를 낮춰 반드시 유효한 궤적으로 보정** (테스트: 난이도별 300 케이스).
+  - 포/백핸드: 공 x ≥ 캐릭터 x → 포핸드.
 - `ai.ts`: 상대 타격 이벤트 후 `reactionMs` 대기 → `predict`로 타점 추정(+`predictErr` 노이즈) → 플레이어와 같은 이동 모델로 이동 → 샷 선택(난이도별 정책: hard는 상대가 뒤면 DROP, 앞이면 깊은 DRIVE) → 판정은 `mistakeRate`로 확률적.
 - `modes/solo.ts`: 콤보, 최고 콤보(localStorage `squash.best.<difficulty>`), PERFECT 수, 실점 시 콤보 0 + 재서브.
 - `modes/match.ts`: PAR 룰 + AI + 판정 연출.
@@ -107,7 +110,8 @@ WSF 기준값(배율 1.0):
 - `court-mesh.ts`: `CourtDims`로 벽·바닥·라인·틴·유리 뒷벽·아레나·가상 스폰서 보드 생성. 난이도 변경 시 재생성.
 - `character.ts`: 기본 도형 캐릭터(머리·헤드밴드·몸통·가는 팔다리·라켓), 스윙 절차 애니메이션.
 - `camera.ts`: 기준 위치 = 뒷벽 바깥 위. 매 리사이즈 시 코트 8개 꼭짓점이 화면에 들어오는 거리/FOV 계산. 플레이어 x/z를 저역필터로 소량 추종하되 그 범위로 클램프.
-- `fx/`: 트레일, 임팩트 섬광/스파크, 공 잔상, 타이밍 링(예상 타점 바닥 점선 링 축소), 타격 범위 원, 벽 자국, 판정 팝업, 화면 진동.
+- `fx.ts`: 스윙 트레일, 임팩트 섬광/스파크, 공 잔상, 타이밍 가이드(예상 타점 바닥 점선 링이 좁혀짐, 제자리면 초록) + 타격 범위 원, 앞벽 자국, 화면 진동. 판정 팝업은 DOM(`main.ts`).
+- `game/game.ts`: 1인 모드 진행 (고정 타임스텝 안에서 이동·스윙 버퍼·공, 프레임마다 FX/카메라). 디버그 봇(`debug.autoplay`)으로 E2E 검증.
 
 ### audio
 - `sfx.ts`: 이름 → 파일 후보 목록. 피치 ±`pitchJitter`, 속도→볼륨 매핑, 스퀵 쿨다운. 파일이 없으면 `synth.ts`로 폴백.

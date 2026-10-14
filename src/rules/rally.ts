@@ -111,3 +111,10 @@ export function serviceBoxCenter(side: ServeSide, c: CourtDims): { x: number; z:
   const s = side === 'right' ? 1 : -1;
   return { x: s * (c.width / 2 - c.serviceBoxSize / 2), z: c.shortLineZ + c.serviceBoxSize / 2 };
 }
+
+/** 앞벽에서 나온 공을 받아야 하는 상태로 랠리 시작 (1인 모드 피드 공) */
+export function feedRally(players: 1 | 2, receiver: PlayerId): RallyState {
+  const s = newRally(players, receiver);
+  // 피드 공은 receiver가 받아야 하므로 마지막 타자 = 상대
+  return { ...s, phase: 'returning', lastHitter: opponent(receiver, s), isServe: false };
+}
