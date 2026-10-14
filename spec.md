@@ -109,8 +109,10 @@ WSF 기준값(배율 1.0):
 - `fx.ts`: 스윙 트레일, 임팩트 섬광/스파크, 공 잔상, 타이밍 가이드(예상 타점 바닥 점선 링이 좁혀짐, 제자리면 초록) + 타격 범위 원, 앞벽 자국, 화면 진동. 판정 팝업은 DOM(`main.ts`).
 - `game/game.ts`: 1인 모드 진행 (고정 타임스텝 안에서 이동·스윙 버퍼·공, 프레임마다 FX/카메라). 디버그 봇(`debug.autoplay`)으로 E2E 검증.
 
-### audio
-- `sfx.ts`: 이름 → 파일 후보 목록. 피치 ±`pitchJitter`, 속도→볼륨 매핑, 스퀵 쿨다운. 파일이 없으면 `synth.ts`로 폴백.
+### audio (M5)
+- `sfx.ts`: `BANK` = 소리별 [Kenney CC0 파일 변형들 + 분석 기반 합성 레이어 + EQ + 돔 잔향 센드]. 같은 변형 연속 방지, 피치 ±`pitchJitter`, 속도→볼륨. 파일 로딩 전/실패 시 합성음 폴백. 마스터 컴프레서.
+- `synth.ts`: 모달 합성 레이어(`body_racket` 395/468/355/97Hz…, `wall_boom` 실측 벽 공진), 스퀵(스틱-슬립), 징글, 돔 체육관 임펄스(초기 반사 + RT60 2.8s, 시간에 따라 어두워짐).
+- 발소리: 이동 거리 `audio.stepStride`마다 나무 바닥 발소리. 검증: `tests/e2e/sound.spec.ts`가 오프라인 렌더링 WAV를 저장 → 실제 경기음과 1/3옥타브 스펙트럼 비교.
 - 사운드 키: `ui_hover, ui_click, ui_confirm, ui_back, ui_pause, hit_soft, hit_hard, hit_perfect, bounce_front, bounce_side, bounce_glass, bounce_floor, tin, squeak, step, point_win, point_lose, game_win, match_win, match_lose`.
 
 ### ui

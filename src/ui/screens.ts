@@ -64,7 +64,8 @@ export class Screens {
          <button class="btn" data-act="ai">AI 대전<span class="sub">11점 · 3전 2선승</span></button>
          <button class="btn ghost" data-act="howto">조작법</button>
          <button class="btn ghost" data-act="settings">설정</button>
-       </div>`,
+       </div>
+       <p style="margin-top:16px;font-size:12px;opacity:.6">효과음 일부: Kenney (kenney.nl, CC0)</p>`,
       a,
     );
   }

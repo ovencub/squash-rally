@@ -95,6 +95,8 @@ interface Athlete {
   swingCooldown: number;
   /** AI 이동 목표 */
   target: { x: number; z: number } | null;
+  /** 발소리용 누적 이동 거리 */
+  stepAcc: number;
 }
 
 /**
@@ -179,7 +181,7 @@ export class Game {
   }
 
   private makeAthlete(id: PlayerId, shirt: number, x: number, z: number): Athlete {
-    return { id, mover: createMover(x, z), ch: createCharacter(shirt), swingAnim: null, swingHand: 'fore', swingCooldown: 0, target: null };
+    return { id, mover: createMover(x, z), ch: createCharacter(shirt), swingAnim: null, swingHand: 'fore', swingCooldown: 0, target: null, stepAcc: 0 };
   }
 
   private objects(): THREE.Object3D[] {
@@ -381,16 +383,32 @@ export class Game {
     const target = !locked && !hasInput && tuning.debug.autoplay && this.ring ? standSpotFor(this.ring.point, this.playerPos, w.court) : null;
     const ratio = this.settings.moveSpeed / tuning.player.maxSpeed;
     if (moveStep(this.A.mover, realDt, w.court, hasInput ? this.moveInput : null, target, ratio)) sfx.play('squeak', 0.7);
+    this.footsteps(this.A, realDt, 1);
 
     // AI: 기본 이동 속도 × 난이도 비율 (사람과 같은 이동 모델)
     if (this.B) {
       const t = locked ? null : this.B.target;
       if (moveStep(this.B.mover, realDt, w.court, null, t, tuning.ai.level[this.difficulty].speedRatio)) sfx.play('squeak', 0.4);
+      this.footsteps(this.B, realDt, 0.5);
       this.separate();
     }
 
     w.step(dt);
     if (w.ball && w.rally.phase === 'returning') this.trace.push({ ...w.ball.pos, t: w.ball.time });
+  }
+
+  /** 이동 거리에 따라 나무 바닥 발소리 (빠를수록 크게) */
+  private footsteps(a: Athlete, dt: number, vol: number): void {
+    const speed = Math.hypot(a.mover.vx, a.mover.vz);
+    if (speed < 0.8) {
+      a.stepAcc = tuning.audio.stepStride * 0.7; // 출발 첫 걸음은 빨리
+      return;
+    }
+    a.stepAcc += speed * dt;
+    if (a.stepAcc >= tuning.audio.stepStride) {
+      a.stepAcc = 0;
+      sfx.play('step', vol * Math.min(1, 0.3 + speed / 8));
+    }
   }
 
   /** 두 선수가 겹치지 않게 AI 쪽을 밀어낸다 */

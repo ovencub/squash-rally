@@ -1,0 +1,61 @@
+{
+ "hit_soft": [
+  "hit_soft_0",
+  "hit_soft_1",
+  "hit_soft_2"
+ ],
+ "hit_hard": [
+  "hit_hard_0",
+  "hit_hard_1",
+  "hit_hard_2"
+ ],
+ "hit_perfect": [
+  "hit_perfect_0",
+  "hit_perfect_1"
+ ],
+ "bounce_front": [
+  "bounce_front_0",
+  "bounce_front_1"
+ ],
+ "bounce_side": [
+  "bounce_side_0",
+  "bounce_side_1"
+ ],
+ "bounce_glass": [
+  "bounce_glass_0",
+  "bounce_glass_1",
+  "bounce_glass_2"
+ ],
+ "bounce_floor": [
+  "bounce_floor_0",
+  "bounce_floor_1",
+  "bounce_floor_2"
+ ],
+ "tin": [
+  "tin_0",
+  "tin_1",
+  "tin_2"
+ ],
+ "step": [
+  "step_0",
+  "step_1",
+  "step_2",
+  "step_3",
+  "step_4"
+ ],
+ "ui_hover": [
+  "ui_hover_0"
+ ],
+ "ui_click": [
+  "ui_click_0"
+ ],
+ "ui_confirm": [
+  "ui_confirm_0"
+ ],
+ "ui_back": [
+  "ui_back_0"
+ ],
+ "ui_pause": [
+  "ui_pause_0"
+ ]
+}

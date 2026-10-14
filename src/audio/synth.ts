@@ -3,19 +3,57 @@
 
 type Synth = (ctx: AudioContext, out: AudioNode, t: number, vol: number, pitch: number) => void;
 
-/** 코트 울림용 짧은 리버브 임펄스 (스테레오 감쇠 노이즈) */
-export function makeImpulse(ctx: AudioContext, seconds = 0.9, decay = 3.2): AudioBuffer {
-  const len = Math.floor(ctx.sampleRate * seconds);
-  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+/**
+ * 큰 돔 체육관 잔향 임펄스 (M5 피드백): 초기 반사 몇 개 + 긴 확산 꼬리(RT60 ≈ seconds).
+ * 고음은 빨리, 저음은 오래 남도록 시간에 따라 저역통과를 점점 강하게 건다. 좌우 채널은 서로 다른 난수.
+ */
+export function makeImpulse(ctx: AudioContext, seconds = 2.8, preDelay = 0.03): AudioBuffer {
+  const sr = ctx.sampleRate;
+  const len = Math.floor(sr * (seconds + preDelay));
+  const buf = ctx.createBuffer(2, len, sr);
+  const early = [
+    [0.019, 0.55],
+    [0.031, 0.42],
+    [0.047, 0.38],
+    [0.071, 0.3],
+    [0.097, 0.24],
+    [0.131, 0.18],
+  ];
   for (let ch = 0; ch < 2; ch++) {
     const d = buf.getChannelData(ch);
     let seed = 777 + ch * 31;
-    for (let i = 0; i < len; i++) {
+    let lp = 0;
+    const p0 = Math.floor(preDelay * sr);
+    for (let i = p0; i < len; i++) {
       seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      d[i] = ((seed / 0x7fffffff) * 2 - 1) * Math.pow(1 - i / len, decay);
+      const t = (i - p0) / sr;
+      const n = (seed / 0x7fffffff) * 2 - 1;
+      // 진폭: RT60 = seconds → e^(-6.9 t / seconds), 시작은 살짝 페이드인(확산)
+      const amp = Math.exp((-6.9 * t) / seconds) * Math.min(1, t / 0.04);
+      // 시간이 갈수록 어두워짐
+      const k = 0.55 - 0.45 * Math.min(1, t / seconds);
+      lp += k * (n - lp);
+      d[i] = lp * amp * 0.5;
+    }
+    for (const [t, a] of early) {
+      const i = Math.floor((t + (ch ? 0.004 : 0)) * sr);
+      if (i < len) d[i] += a * (ch ? 0.9 : 1);
     }
   }
   return buf;
+}
+
+/** 감쇠 사인 모드 (모달 합성) */
+function mode(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, decay: number) {
+  const o = ctx.createOscillator();
+  o.frequency.value = freq;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t + 0.0015);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + decay * 4.6); // decay = 1/e 시간
+  o.connect(g).connect(out);
+  o.start(t);
+  o.stop(t + decay * 4.6 + 0.02);
 }
 
 let noiseBuf: AudioBuffer | null = null;
@@ -76,6 +114,45 @@ function tone(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0: num
 }
 
 export const SYNTH: Record<string, Synth> = {
+  // ── 파일 음원에 겹치는 레이어 (실제 스쿼시 영상 분석값 기반) ──
+  // 라켓 타격 몸통: 470/355/97Hz 주성분 + 1kHz·1.5kHz 배음, -20dB까지 약 20ms
+  body_racket: (c, o, t, v, p) => {
+    for (const [f, a, d] of [
+      [395, 1, 0.011],
+      [468, 0.7, 0.01],
+      [355, 0.5, 0.012],
+      [97, 0.3, 0.014],
+      [974, 0.25, 0.007],
+      [1486, 0.2, 0.006],
+    ]) {
+      mode(c, o, t, v * a * 0.5, f * p, d);
+    }
+    noiseBurst(c, o, t, v * 0.18, 1500 * p, 0.8, 0.01);
+  },
+  // 벽: 실측 벽 공진(253·415·770·883·1023·1534Hz)이 고르게 울리는 넓은 대역 "탁" + 약한 저음 붐
+  wall_boom: (c, o, t, v, p) => {
+    for (const [f, a, d] of [
+      [253, 1, 0.05],
+      [415, 0.9, 0.045],
+      [770, 0.8, 0.04],
+      [883, 0.75, 0.036],
+      [1023, 0.75, 0.032],
+      [1534, 0.75, 0.026],
+      [1857, 0.6, 0.022],
+      [2331, 0.45, 0.018],
+      [110, 0.35, 0.03],
+    ]) {
+      mode(c, o, t, v * a * 0.32, f * p, d);
+    }
+    noiseBurst(c, o, t, v * 0.5, 900 * p, 0.35, 0.035);
+    hp(c, o, t, v * 0.35, 1500 * p, 0.03);
+  },
+  glass_thunk: (c, o, t, v, p) => {
+    mode(c, o, t, v * 0.5, 180 * p, 0.02);
+    mode(c, o, t, v * 0.2, 1150 * p, 0.03);
+    mode(c, o, t, v * 0.1, 2600 * p, 0.025);
+  },
+
   // 라켓 타격 (M3 피드백: 더 경쾌하고 시원하게): 고음 "탁" 트랜지언트 + 공이 눌리는 "퐁" 피치 드롭 + 짧은 몸통
   hit_soft: (c, o, t, v, p) => {
     hp(c, o, t, v * 0.7, 4200 * p, 0.018);
@@ -126,27 +203,39 @@ export const SYNTH: Record<string, Synth> = {
     }
     noiseBurst(c, o, t, v * 0.5, 4000, 1, 0.03);
   },
-  // 신발 스퀵: 빠르게 떨리는 고음
+  // 신발 스퀵: 고무 밑창 스틱-슬립. 1.6~3kHz에서 빠르게 떨리며 끝이 살짝 올라감
   squeak: (c, o, t, v, p) => {
+    const dur = 0.09 + Math.random() * 0.08;
+    const base = (1700 + Math.random() * 700) * p;
     const osc = c.createOscillator();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(2300 * p, t);
-    osc.frequency.linearRampToValueAtTime(2900 * p, t + 0.05);
-    osc.frequency.linearRampToValueAtTime(2500 * p, t + 0.11);
+    osc.frequency.setValueAtTime(base, t);
+    osc.frequency.linearRampToValueAtTime(base * 1.25, t + dur * 0.7);
+    osc.frequency.linearRampToValueAtTime(base * 1.1, t + dur);
     const lfo = c.createOscillator();
-    lfo.frequency.value = 70;
+    lfo.type = 'square';
+    lfo.frequency.value = 55 + Math.random() * 40;
     const lg = c.createGain();
-    lg.gain.value = 180;
+    lg.gain.value = base * 0.08;
     lfo.connect(lg).connect(osc.frequency);
-    const f = c.createBiquadFilter();
-    f.type = 'bandpass';
-    f.frequency.value = 2600 * p;
-    f.Q.value = 4;
-    osc.connect(f).connect(env(c, o, t, v * 0.18, 0.01, 0.12));
+    const f1 = c.createBiquadFilter();
+    f1.type = 'bandpass';
+    f1.frequency.value = base * 1.1;
+    f1.Q.value = 3;
+    const f2 = c.createBiquadFilter();
+    f2.type = 'peaking';
+    f2.frequency.value = base * 2.1;
+    f2.gain.value = 6;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v * 0.22, t + 0.012);
+    g.gain.setValueAtTime(v * 0.22, t + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(f1).connect(f2).connect(g).connect(o);
     osc.start(t);
     lfo.start(t);
-    osc.stop(t + 0.16);
-    lfo.stop(t + 0.16);
+    osc.stop(t + dur + 0.02);
+    lfo.stop(t + dur + 0.02);
   },
   step: (c, o, t, v, p) => noiseBurst(c, o, t, v * 0.25, 400 * p, 1, 0.03),
   // UI

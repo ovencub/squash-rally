@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { sfx } from '../audio/sfx';
 import { tuning } from '../config/tuning';
 
 export interface DebugHooks {
@@ -55,6 +56,13 @@ export function createDebugPanel(hooks: DebugHooks): GUI {
   fx.add(tuning.fx.shake, 'weak', 0, 0.15, 0.005).name('진동 약');
   fx.add(tuning.fx.shake, 'normal', 0, 0.15, 0.005).name('진동 보통');
   fx.close();
+
+  const snd = gui.addFolder('사운드 (클릭해서 들어보기)');
+  snd.add(tuning.audio, 'reverb', 0, 1.5, 0.05).name('돔 잔향 크기');
+  snd.add(tuning.audio, 'reverbSeconds', 0.5, 5, 0.1).name('잔향 길이(s)').onFinishChange(() => sfx.rebuildReverb());
+  snd.add(tuning.audio, 'pitchJitter', 0, 0.2, 0.01).name('피치 랜덤 ±');
+  for (const n of sfx.names) snd.add({ [n]: () => (sfx.unlock(), sfx.play(n)) }, n);
+  snd.close();
 
   const view = gui.addFolder('표시');
   view.add(tuning.debug, 'closeup', ['off', 'side', 'back', 'front']).name('근접 카메라');

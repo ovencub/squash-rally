@@ -329,7 +329,7 @@ createDebugPanel({
 
 // ── 루프 ──
 const stats = { fps: 0, frames: 0 };
-Object.assign(window as object, { __stats: stats, __game: () => game, __startSolo: startSolo, __startMatch: startMatch, __tuning: tuning });
+Object.assign(window as object, { __stats: stats, __game: () => game, __startSolo: startSolo, __startMatch: startMatch, __tuning: tuning, __sfx: sfx });
 let fpsAcc = 0;
 let fpsFrames = 0;
 let last = performance.now();

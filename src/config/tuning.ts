@@ -159,6 +159,10 @@ export const tuning = {
     master: 0.8,
     pitchJitter: 0.05, // ±5%
     speedForFullVolume: 22, // m/s
+    // M5: 큰 돔 체육관 잔향
+    reverb: 0.55, // 잔향 출력 크기 (0 = 없음)
+    reverbSeconds: 2.8, // 잔향 길이 (RT60)
+    stepStride: 0.85, // 이 거리(m)마다 발소리
   },
 
   debug: {

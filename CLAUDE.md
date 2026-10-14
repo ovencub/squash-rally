@@ -37,5 +37,7 @@
 - **금지**: CC-BY-NC 등 비상업, 출처 불명, 유료.
 - 모든 음원은 `assets/sfx/CREDITS.md`에 [사용 파일명 / 원본 이름 / 출처 URL / 작성자 / 라이선스] 기록.
 - 다운로드한 압축 파일은 새 빈 폴더(`assets/sfx/_downloads/<팩이름>/`)에 풀고, 스크립트는 그 안에서 실행하지 않는다.
-- 가공: ffmpeg로 앞뒤 무음 제거 → 정규화 → `.ogg`(+`.m4a` 사파리 폴백) → `public/sfx/`.
+- 가공: `python scripts/build_sfx.py assets/sfx/_downloads public/sfx` — 앞 무음 제거 → 피크 정규화 → `.ogg`(+`.m4a` 사파리 폴백) + `manifest.json`. 매핑(어떤 원본을 어떤 소리로)은 스크립트 상단 `MAP`.
+- 소리 조합(파일 + 합성 레이어 + EQ + 잔향 센드)은 `src/audio/sfx.ts`의 `BANK`. 합성 레이어는 실제 경기음 분석값 기반(`src/audio/synth.ts`).
+- 레퍼런스 영상(`references/sound/`)은 분석만 하고 소리를 복사하지 않는다.
 - 못 구한 소리는 `audio/synth.ts` 합성음으로 두고 CREDITS에 "임시 합성음"으로 표시.
