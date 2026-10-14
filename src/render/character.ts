@@ -72,6 +72,10 @@ function makeLeg(pelvis: THREE.Group, x: number, accent: number): Leg {
   const hip = bone(THIGH, 0.05, palette.limb);
   hip.position.set(x, -0.02, 0);
   pelvis.add(hip);
+  // 반바지 통 (허벅지 위 55%)
+  const shortsLeg = part(new THREE.CylinderGeometry(0.085, 0.078, THIGH * 0.55, 10), palette.shorts, 0.014);
+  shortsLeg.position.y = -THIGH * 0.27;
+  hip.add(shortsLeg);
   const knee = bone(SHIN, 0.042, palette.limb);
   knee.position.y = -THIGH;
   hip.add(knee);
@@ -91,10 +95,14 @@ function makeLeg(pelvis: THREE.Group, x: number, accent: number): Leg {
   return { hip, knee, foot };
 }
 
-function makeArm(spine: THREE.Group, x: number, accent: number | null): Arm {
+function makeArm(spine: THREE.Group, x: number, accent: number | null, shirt: number): Arm {
   const shoulder = bone(UPPER_ARM, 0.036, palette.limb);
   shoulder.position.set(x, 0.47, 0);
   spine.add(shoulder);
+  // 반팔 소매
+  const sleeve = part(new THREE.CylinderGeometry(0.068, 0.058, UPPER_ARM * 0.5, 10), shirt, 0.014);
+  sleeve.position.y = -UPPER_ARM * 0.2;
+  shoulder.add(sleeve);
   const elbow = bone(FOREARM, 0.032, palette.limb);
   elbow.position.y = -UPPER_ARM;
   shoulder.add(elbow);
@@ -154,9 +162,27 @@ export function createCharacter(shirt: number, trim: number = palette.accent): C
   const head = part(new THREE.SphereGeometry(0.17, 16, 12), palette.skin);
   head.position.y = 0.68;
   spine.add(head);
-  const hair = part(new THREE.SphereGeometry(0.172, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), palette.shorts, 0.006);
+  const hair = part(new THREE.SphereGeometry(0.178, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), palette.hair, 0.008);
   hair.position.y = 0.69;
   spine.add(hair);
+  // 덥수룩한 머리 뭉치 (키 이미지)
+  const tufts: [number, number, number, number][] = [
+    [0, 0.86, 0.02, 0.085],
+    [-0.09, 0.83, 0.05, 0.075],
+    [0.09, 0.83, 0.05, 0.075],
+    [-0.06, 0.82, 0.12, 0.07],
+    [0.06, 0.82, 0.12, 0.07],
+    [0, 0.8, 0.15, 0.07],
+    [-0.13, 0.76, 0.06, 0.06],
+    [0.13, 0.76, 0.06, 0.06],
+    [0.05, 0.85, -0.07, 0.07],
+    [-0.06, 0.85, -0.06, 0.065],
+  ];
+  for (const [tx, ty, tz, r] of tufts) {
+    const t = part(new THREE.SphereGeometry(r, 10, 8), palette.hair, 0.008);
+    t.position.set(tx, ty, tz);
+    spine.add(t);
+  }
   const band = new THREE.Mesh(new THREE.CylinderGeometry(0.176, 0.176, 0.05, 16), toon(palette.headband));
   band.position.y = 0.71;
   spine.add(band);
@@ -170,8 +196,8 @@ export function createCharacter(shirt: number, trim: number = palette.accent): C
   }
 
   const legs: [Leg, Leg] = [makeLeg(pelvis, -0.1, trim), makeLeg(pelvis, 0.1, trim)];
-  const armL = makeArm(spine, -0.22, null);
-  const armR = makeArm(spine, 0.22, trim);
+  const armL = makeArm(spine, -0.22, null, shirt);
+  const armR = makeArm(spine, 0.22, trim, shirt);
 
   // 라켓: 손에서 아래팔 방향으로 뻗음
   const racket = new THREE.Group();

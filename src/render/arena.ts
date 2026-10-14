@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { type CourtDims } from '../config/court';
 import { palette } from './palette';
 
 // 코트 바깥 아레나 (M6, 기획서 3-11: 보라 아레나 + 단순한 관중 실루엣 + 가상 스폰서).
-// 플레이(공·라인 읽기)를 방해하지 않게 채도·명도를 낮게 유지한다. 장식이라 Math.random 사용.
+// M6 2차: GPT 키 이미지(assets/design/01) 기준으로 관중을 밝고 다양하게, 조명·난간·유리 프레임 추가.
+// 장식이라 Math.random 사용.
 
 const SPONSORS = ['ZEPHRA', 'KORVO', 'LUMEN-9', 'TALLIX', 'BRIQ', 'NOVAPEAK'];
 
@@ -131,21 +131,71 @@ export function createArena(c: CourtDims): Arena {
     group.add(board);
   }
 
-  // 관중 실루엣: 몸통 + 머리를 합친 지오메트리 하나로 인스턴싱
-  const body = new THREE.CylinderGeometry(0.17, 0.2, 0.55, 8);
+  // 관중 (M6 2차, 키 이미지 기준): 몸통(셔츠 색) + 머리(피부색) + 머리카락을 각각 인스턴싱
+  const body = new THREE.CylinderGeometry(0.17, 0.21, 0.55, 8);
   body.translate(0, 0.28, 0);
-  const head = new THREE.SphereGeometry(0.13, 10, 8);
-  head.translate(0, 0.7, 0);
-  const personGeo = mergeGeometries([body, head])!;
-  const crowd = new THREE.InstancedMesh(personGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), seats.length);
-  const shirtColors = [0x5a4aa8, 0x3d8f8a, 0xa85a6a, 0x8a7a3a, 0x6a5ab8, 0x4a3a88, 0x7a6ac0];
+  const headGeo = new THREE.SphereGeometry(0.13, 10, 8);
+  headGeo.translate(0, 0.7, 0);
+  const hairGeo = new THREE.SphereGeometry(0.135, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55);
+  hairGeo.translate(0, 0.72, 0);
+  const mat = () => new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const bodies = new THREE.InstancedMesh(body, mat(), seats.length);
+  const heads = new THREE.InstancedMesh(headGeo, mat(), seats.length);
+  const hairs = new THREE.InstancedMesh(hairGeo, mat(), seats.length);
+  const crowdParts = [bodies, heads, hairs];
+  const shirtColors = [0xff7a6e, 0x2fc2b3, 0xffc93c, 0x8a6cf0, 0x4d8ef0, 0xff8fb8, 0xff9f45, 0x6a5ab8];
+  const skinColors = [0xf4c9a4, 0xe0a87e, 0xc58a62, 0xf7d6bc];
+  const hairColors = [0x1c1626, 0x2b1d14, 0x3a2a1a, 0x101018];
   const col = new THREE.Color();
   const phase = seats.map(() => Math.random() * Math.PI * 2);
+  const dim = new THREE.Color(palette.arenaWall);
   seats.forEach((_, i) => {
-    col.setHex(shirtColors[i % shirtColors.length]).lerp(new THREE.Color(palette.arenaWall), 0.45).multiplyScalar(0.7 + Math.random() * 0.15);
-    crowd.setColorAt(i, col);
+    // 멀리 있는 관중이라 아레나 색으로 살짝 눌러 공 읽기를 방해하지 않게
+    const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+    bodies.setColorAt(i, col.setHex(pick(shirtColors)).lerp(dim, 0.25));
+    heads.setColorAt(i, col.setHex(pick(skinColors)).lerp(dim, 0.2));
+    hairs.setColorAt(i, col.setHex(pick(hairColors)));
   });
-  group.add(crowd);
+  group.add(...crowdParts);
+
+  // 관중석 난간 + 조명 점
+  const railMat = new THREE.MeshBasicMaterial({ color: 0x8f7ad8 });
+  const glowTex = (() => {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    const g2 = cv.getContext('2d')!;
+    const gr = g2.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.25, 'rgba(230,210,255,0.85)');
+    gr.addColorStop(1, 'rgba(160,120,255,0)');
+    g2.fillStyle = gr;
+    g2.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(cv);
+  })();
+  const glowMat = new THREE.SpriteMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  for (const s of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, zTo - zFrom), railMat);
+    rail.position.set(s * (hw + 1.4), 0.95, (zFrom + zTo) / 2);
+    group.add(rail);
+    for (let z = zFrom; z <= zTo; z += 1.5) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.95, 0.03), railMat);
+      post.position.set(s * (hw + 1.4), 0.475, z);
+      group.add(post);
+    }
+    // 관중석 위 조명 (키 이미지의 빛나는 점들)
+    for (let z = 0; z <= L + 2; z += 2.2) {
+      const light = new THREE.Sprite(glowMat);
+      light.scale.setScalar(0.45);
+      light.position.set(s * (hw + 1.4 + tiers * tierDepth + 0.6), tiers * tierRise + 2.4, z);
+      group.add(light);
+    }
+  }
+  for (let x = -9; x <= 9; x += 3) {
+    const light = new THREE.Sprite(glowMat);
+    light.scale.setScalar(0.6);
+    light.position.set(x, 9.5, -2.8);
+    group.add(light);
+  }
 
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
@@ -162,20 +212,31 @@ export function createArena(c: CourtDims): Arena {
       pos.set(s.x, s.y + bob, s.z);
       q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, s.face < 0 ? -Math.PI / 2 : Math.PI / 2);
       m.compose(pos, q, sc);
-      crowd.setMatrixAt(i, m);
+      for (const part of crowdParts) part.setMatrixAt(i, m);
     });
-    crowd.instanceMatrix.needsUpdate = true;
+    for (const part of crowdParts) part.instanceMatrix.needsUpdate = true;
   };
   tick(0);
 
-  // 유리 뒷벽 프레임 기둥
-  const postMat = new THREE.MeshBasicMaterial({ color: 0x8a86b8 });
+  // 유리 뒷벽 프레임: 패널 기둥 + 위 레일 (키 이미지)
+  const postMat = new THREE.MeshBasicMaterial({ color: 0x2a2050 });
   const backH = c.backOutHeight + 0.25;
-  for (const s of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.07, backH, 0.07), postMat);
-    post.position.set(s * hw, backH / 2, L);
+  const panels = Math.max(3, Math.round(c.width / 1.5));
+  for (let i = 0; i <= panels; i++) {
+    const x = -hw + (c.width * i) / panels;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, backH, 0.05), postMat);
+    post.position.set(x, backH / 2, L + 0.03);
     group.add(post);
+    // 유리 고정 클램프
+    for (const y of [0.35, backH - 0.35]) {
+      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.09, 0.06), postMat);
+      clamp.position.set(x, y, L + 0.04);
+      group.add(clamp);
+    }
   }
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(c.width, 0.05, 0.06), postMat);
+  rail.position.set(0, backH, L + 0.03);
+  group.add(rail);
 
   return { group, tick, cheer: (a) => (excite = Math.min(1, excite + a)) };
 }

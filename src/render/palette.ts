@@ -12,8 +12,10 @@ export const palette = {
   arenaWall: 0x23174b,
   sky: 0x1a1238,
   outline: 0x111111,
-  skin: 0xf6f2ea,
-  limb: 0xfafafa,
+  // M6 2차: 키 이미지 기준 살구색 피부 (팔다리도 피부색)
+  skin: 0xf4c9a4,
+  limb: 0xf4c9a4,
+  hair: 0x1c1626,
   playerShirt: 0x23b5a8,
   aiShirt: 0xff5a5f,
   shorts: 0x1b1b24,

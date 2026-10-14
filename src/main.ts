@@ -42,7 +42,13 @@ ui.innerHTML = `
     </div>
     <button class="pause-btn" id="pauseBtn" title="일시정지 (Esc)">II</button>
     <div class="banner" id="banner"><div class="t"></div><div class="d"></div></div>
-    <div class="hud-guide"><b>WASD</b> = 이동 &nbsp;·&nbsp; <b>우클릭</b> = 포핸드(오른쪽 공) &nbsp;·&nbsp; <b>좌클릭</b> = 백핸드(왼쪽 공) &nbsp;·&nbsp; <b>커서</b> = 방향 &nbsp;·&nbsp; <b>Esc</b> = 일시정지</div>
+    <div class="hud-guide">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동</span><i></i>
+      <span><svg class="mouse r" viewBox="0 0 16 22"><rect x="1" y="1" width="14" height="20" rx="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 1 V9 H15 V8 A7 7 0 0 0 8 1Z" fill="#ffc93c"/><line x1="8" y1="1" x2="8" y2="9" stroke="currentColor" stroke-width="1.5"/></svg> 포핸드</span><i></i>
+      <span><svg class="mouse l" viewBox="0 0 16 22"><rect x="1" y="1" width="14" height="20" rx="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 1 V9 H1 V8 A7 7 0 0 1 8 1Z" fill="#ffc93c"/><line x1="8" y1="1" x2="8" y2="9" stroke="currentColor" stroke-width="1.5"/></svg> 백핸드</span><i></i>
+      <span><kbd>커서</kbd> 방향</span><i></i>
+      <span><kbd>Esc</kbd> 일시정지</span>
+    </div>
   </div>
   <div id="popups"></div>
   <div id="fps" style="position:absolute;right:8px;bottom:6px;font-size:11px;opacity:.45"></div>
@@ -139,7 +145,7 @@ function renderScore(m: MatchState) {
   const gameNo = m.history.length + (m.winner ? 0 : 1);
   const serveSide = m.serveSide === 'right' ? '오른쪽' : '왼쪽';
   document.getElementById('sbInfo')!.textContent =
-    `GAME ${gameNo} · 서브 ${m.server === 'A' ? '◀ 나' : 'AI ▶'} (${serveSide})${isDeuce(m.points) ? ' · 듀스(2점 차)' : ''}`;
+    `GAME ${gameNo}  |  11점 선취  |  서브 ${m.server === 'A' ? '◀ 나' : 'AI ▶'} (${serveSide})${isDeuce(m.points) ? '  |  듀스 · 2점 차' : ''}`;
   for (const id of ['pA', 'pB']) {
     const el = document.getElementById(id)!;
     el.classList.remove('punch');

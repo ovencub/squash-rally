@@ -7,8 +7,6 @@ import { palette } from './palette';
 const LINE_W = 0.05; // 실제 코트 라인 폭 50mm
 const EPS = 0.004; // 라인을 면 위로 띄우는 거리 (z-fighting 방지)
 
-// 가상 스폰서 이름 (실존 브랜드 금지)
-const SPONSORS = ['ZEPHRA', 'KORVO', 'LUMEN-9', 'TALLIX', 'BRIQ', 'NOVAPEAK'];
 
 function flat(color: number, opts: THREE.MeshBasicMaterialParameters = {}): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({ color, ...opts });
@@ -36,21 +34,96 @@ function floorTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-function sponsorTexture(name: string, bg: string, fg: string): THREE.CanvasTexture {
+/**
+ * 앞벽 위 스폰서 보드 (M6 2차, 키 이미지): 보라·코랄·청록·노랑 컬러 블록 + 단순한 추상 로고 (가상 브랜드)
+ */
+const BOARD_STYLES: { bg: string; fg: string; draw: (g: CanvasRenderingContext2D, fg: string) => void }[] = [
+  {
+    bg: '#7a5cf0',
+    fg: '#ffffff',
+    draw: (g, fg) => {
+      g.fillStyle = fg;
+      g.beginPath();
+      g.arc(150, 52, 22, 0, Math.PI * 2);
+      g.fill();
+      g.beginPath();
+      g.moveTo(120, 112);
+      g.lineTo(220, 40);
+      g.lineTo(300, 112);
+      g.fill();
+      g.fillStyle = '#c9b8ff';
+      g.beginPath();
+      g.moveTo(250, 112);
+      g.lineTo(330, 60);
+      g.lineTo(400, 112);
+      g.fill();
+    },
+  },
+  {
+    bg: '#ff5a5f',
+    fg: '#2a1f52',
+    draw: (g, fg) => {
+      g.fillStyle = fg;
+      for (const x of [170, 225]) {
+        g.beginPath();
+        g.moveTo(x, 110);
+        g.lineTo(x + 34, 22);
+        g.lineTo(x + 58, 22);
+        g.lineTo(x + 24, 110);
+        g.fill();
+      }
+      for (const x of [310, 345]) {
+        g.beginPath();
+        g.arc(x, 98, 12, 0, Math.PI * 2);
+        g.fill();
+      }
+    },
+  },
+  {
+    bg: '#23b5a8',
+    fg: '#ffffff',
+    draw: (g, fg) => {
+      g.fillStyle = fg;
+      g.beginPath();
+      g.arc(170, 64, 26, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#2a1f52';
+      g.beginPath();
+      g.moveTo(210, 128);
+      g.quadraticCurveTo(300, 20, 400, 128);
+      g.fill();
+    },
+  },
+  {
+    bg: '#ffc93c',
+    fg: '#2a1f52',
+    draw: (g, fg) => {
+      g.fillStyle = fg;
+      for (const [x, y] of [
+        [235, 44],
+        [281, 44],
+        [235, 90],
+        [281, 90],
+      ]) {
+        g.beginPath();
+        g.arc(x, y, 21, 0, Math.PI * 2);
+        g.fill();
+      }
+    },
+  },
+];
+
+function sponsorTexture(i: number): THREE.CanvasTexture {
+  const st = BOARD_STYLES[i % BOARD_STYLES.length];
   const cv = document.createElement('canvas');
   cv.width = 512;
-  cv.height = 128;
+  cv.height = 136;
   const g = cv.getContext('2d')!;
-  g.fillStyle = bg;
-  g.fillRect(0, 0, 512, 128);
-  g.strokeStyle = fg;
-  g.lineWidth = 6;
-  g.strokeRect(18, 30, 68, 68);
-  g.fillStyle = fg;
-  g.fillRect(36, 48, 32, 32);
-  g.font = 'bold 64px "Arial Black", Arial, sans-serif';
-  g.textBaseline = 'middle';
-  g.fillText(name, 110, 68);
+  g.fillStyle = '#2a1f52';
+  g.fillRect(0, 0, 512, 136);
+  g.fillStyle = st.bg;
+  g.fillRect(8, 8, 496, 120);
+  st.draw(g, st.fg);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -189,12 +262,12 @@ export function createCourtMesh(c: CourtDims): THREE.Group {
     );
     root.add(new THREE.Mesh(lineGeo, flat(palette.line, { side: THREE.DoubleSide })));
     // 벽 윗면 몰딩
-    const trim = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, Math.hypot(L, frontH - backH)), flat(palette.wallTrim));
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, Math.hypot(L, frontH - backH)), flat(0x6b4fd8));
     trim.position.set(s * (hw + 0.06), (frontH + backH) / 2, L / 2);
     trim.rotation.x = Math.atan2(frontH - backH, L);
     root.add(trim);
   }
-  const frontTrim = new THREE.Mesh(new THREE.BoxGeometry(W + 0.16, 0.08, 0.08), flat(palette.wallTrim));
+  const frontTrim = new THREE.Mesh(new THREE.BoxGeometry(W + 0.28, 0.12, 0.12), flat(0x6b4fd8));
   frontTrim.position.set(0, frontH, -0.04);
   root.add(frontTrim);
 
@@ -203,7 +276,7 @@ export function createCourtMesh(c: CourtDims): THREE.Group {
   const n = 4;
   const bw = W / n;
   for (let i = 0; i < n; i++) {
-    const tex = sponsorTexture(SPONSORS[i], '#2a1f52', i % 2 ? '#ffc93c' : '#ffffff');
+    const tex = sponsorTexture(i);
     const m = new THREE.Mesh(new THREE.PlaneGeometry(bw * 0.96, boardH), new THREE.MeshBasicMaterial({ map: tex }));
     m.position.set(-W / 2 + bw * (i + 0.5), frontH + 0.08 + boardH / 2, -0.05);
     root.add(m);

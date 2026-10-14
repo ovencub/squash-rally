@@ -30,7 +30,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1238; col
 .lil-gui.root { pointer-events: auto; }
 
 .banner {
-  position: absolute; left: 50%; top: 18%; transform: translate(-50%, -50%) scale(0.8);
+  position: absolute; left: 50%; top: 22%; transform: translate(-50%, -50%) scale(0.8);
   text-align: center; opacity: 0; transition: opacity 0.15s, transform 0.15s;
 }
 .banner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
@@ -169,3 +169,38 @@ input[type=range] { width: 180px; accent-color: var(--yellow); }
 .btn.primary { animation: glow 2s ease-in-out infinite alternate; }
 @keyframes glow { from { box-shadow: 0 5px 0 #c48f12, 0 0 0 rgba(255, 201, 60, 0); } to { box-shadow: 0 5px 0 #c48f12, 0 0 22px rgba(255, 201, 60, 0.45); } }
 .screen { backdrop-filter: blur(2px); }
+
+/* ── M6 2차: GPT 키 이미지 기준 HUD ── */
+.logo-img { display: block; width: min(560px, 80vw); height: auto; margin: 0 auto; filter: drop-shadow(0 8px 0 rgba(26,18,56,0.6)); animation: logoIn 0.6s cubic-bezier(.2,1.6,.4,1); }
+.logo-img.small { width: min(320px, 60vw); }
+@keyframes logoIn { from { transform: scale(0.6) rotate(-6deg); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.scoreboard {
+  top: 12px; gap: 14px; padding: 6px 26px; border-radius: 20px; background: rgba(26, 18, 56, 0.92);
+  border: 3px solid #6b4fd8; box-shadow: 0 0 18px rgba(107, 79, 216, 0.55), 0 4px 0 rgba(0,0,0,0.3);
+}
+.sb-name { font-family: 'Noto Sans KR', sans-serif; font-weight: 900; font-size: 26px; }
+.sb-games { font-size: 14px; letter-spacing: 0.15em; }
+.sb-pts { min-width: 58px; font-size: 34px; border-radius: 12px; border: 2px solid #1a1238; }
+.sb-sep { color: #fff; }
+.sb-info {
+  bottom: auto; top: calc(100% + 6px); left: 50%; right: auto; transform: translateX(-50%);
+  padding: 4px 16px; border-radius: 999px; background: rgba(26, 18, 56, 0.92); border: 2px solid #6b4fd8;
+  font-size: 13px; font-weight: 700; color: #fff;
+}
+.speed-ctl, .pause-btn { border: 3px solid #6b4fd8; background: rgba(26, 18, 56, 0.9); box-shadow: 0 0 12px rgba(107, 79, 216, 0.45); }
+.speed-ctl { border-radius: 18px; padding: 8px 14px; top: 14px; }
+.pause-btn { border-radius: 14px; width: 48px; height: 48px; }
+
+.hud-guide {
+  display: flex; align-items: center; gap: 12px; padding: 7px 18px; border-radius: 16px;
+  background: rgba(26, 18, 56, 0.9); border: 3px solid #6b4fd8; font-size: 13px; font-weight: 700;
+}
+.hud-guide span { display: inline-flex; align-items: center; gap: 4px; }
+.hud-guide i { width: 2px; height: 18px; background: rgba(255,255,255,0.25); }
+.hud-guide kbd {
+  font: 800 12px 'Noto Sans KR', sans-serif; min-width: 22px; padding: 2px 6px; border-radius: 6px; text-align: center;
+  border: 2px solid #fff; color: #fff; background: rgba(255,255,255,0.08);
+}
+.hud-guide .mouse { width: 16px; height: 22px; color: #fff; }
+.combo { padding: 8px 16px; border-radius: 16px; background: rgba(26, 18, 56, 0.75); border: 3px solid #6b4fd8; }
