@@ -97,9 +97,25 @@ class Sfx {
   volume = 1;
 
   /** 브라우저 정책상 첫 사용자 입력 후에 호출 */
+  /** 오디오를 못 쓰는 환경 (소리 없이 게임은 계속) */
+  private broken = false;
+
   unlock(): void {
+    if (this.broken) return;
+    try {
+      this.init();
+    } catch (e) {
+      this.broken = true;
+      this.ctx = null;
+      console.warn('오디오를 사용할 수 없어 소리 없이 진행합니다', e);
+    }
+  }
+
+  private init(): void {
     if (!this.ctx) {
-      this.ctx = new AudioContext();
+      const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AC) throw new Error('AudioContext 없음');
+      this.ctx = new AC();
       this.out = this.ctx.createGain();
       // 마스터 리미터 (잔향과 겹쳐도 찢어지지 않게)
       const comp = this.ctx.createDynamicsCompressor();
@@ -112,7 +128,7 @@ class Sfx {
       this.reverb.connect(this.wetOut).connect(this.out);
       void this.loadAll();
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {});
   }
 
   private async loadAll(): Promise<void> {
@@ -135,6 +151,14 @@ class Sfx {
   }
 
   play(name: SfxName, vol = 1, pitch = 1): void {
+    try {
+      this.playUnsafe(name, vol, pitch);
+    } catch {
+      /* 소리 하나 실패해도 게임은 계속 */
+    }
+  }
+
+  private playUnsafe(name: SfxName, vol: number, pitch: number): void {
     const ctx = this.ctx;
     if (!ctx || !this.out || ctx.state !== 'running') return;
     const v = vol * this.volume * tuning.audio.master;

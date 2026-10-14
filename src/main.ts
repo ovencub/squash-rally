@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import { sfx } from './audio/sfx';
 import { buildCourt } from './config/court';
 import { tuning, type Difficulty } from './config/tuning';
-import { createDebugPanel } from './debug/panel';
-import { launchPresets } from './debug/presets';
 import { Game, type HitEvent, type MatchStats, type Mode, type WhiffReason } from './game/game';
 import { type Hand } from './game/swing';
 import { loadSettings, saveSettings } from './game/settings';
@@ -18,7 +16,22 @@ import { Screens } from './ui/screens';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ui = document.getElementById('ui')!;
-const renderer = createRenderer(canvas);
+const boot = document.getElementById('boot');
+/** WebGL을 못 쓰는 환경이면 안내만 보여주고 멈춘다 */
+function fatal(msg: string): never {
+  const m = document.getElementById('bootMsg');
+  if (m) m.innerHTML = msg;
+  boot?.querySelector('div')?.remove();
+  throw new Error(msg);
+}
+let rendererOrNull: ReturnType<typeof createRenderer> | null = null;
+try {
+  rendererOrNull = createRenderer(canvas);
+} catch {
+  /* 아래에서 안내 */
+}
+if (!rendererOrNull) fatal('이 브라우저에서는 3D(WebGL)를 쓸 수 없어요.<br>최신 크롬·엣지·사파리·파이어폭스에서 열어주세요.');
+const renderer = rendererOrNull;
 const scene = createScene();
 const settings = loadSettings();
 sfx.volume = settings.volume;
@@ -305,8 +318,13 @@ window.addEventListener('blur', () => {
   if (game && !game.paused) pause();
 });
 
-// ── 디버그 패널 (` 키) ──
-createDebugPanel({
+// ── 디버그 패널 (` 키) — 처음 누를 때만 불러온다 (일반 플레이어 로딩에 포함되지 않게) ──
+let debugLoading = false;
+window.addEventListener('keydown', async (e) => {
+  if (e.key !== '`' || debugLoading) return;
+  debugLoading = true;
+  const [{ createDebugPanel }, { launchPresets }] = await Promise.all([import('./debug/panel'), import('./debug/presets')]);
+  createDebugPanel({
   onCourtChange: () => {
     game?.rebuildCourt();
     resize();
@@ -331,6 +349,7 @@ createDebugPanel({
         game.world.launch(q.from, q.vel, 'A', q.serve);
       },
     })),
+  }).show();
 });
 
 // ── 루프 ──
@@ -377,3 +396,11 @@ function frame(now: number) {
 resize();
 screens.title({ start: showMain });
 requestAnimationFrame(frame);
+// 첫 프레임이 그려지고 폰트가 준비되면 로딩 화면을 걷는다
+void document.fonts.ready.then(() =>
+  requestAnimationFrame(() => {
+    if (!boot) return;
+    boot.style.opacity = '0';
+    setTimeout(() => boot.remove(), 450);
+  }),
+);

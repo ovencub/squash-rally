@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:prod": "playwright test -c playwright.prod.config.ts"
   },
   "dependencies": {
     "lil-gui": "^0.21.0",

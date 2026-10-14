@@ -204,3 +204,4 @@ input[type=range] { width: 180px; accent-color: var(--yellow); }
 }
 .hud-guide .mouse { width: 16px; height: 22px; color: #fff; }
 .combo { padding: 8px 16px; border-radius: 16px; background: rgba(26, 18, 56, 0.75); border: 3px solid #6b4fd8; }
+.touch-note { margin-top: 10px !important; padding: 8px 14px; border-radius: 12px; background: rgba(255, 90, 95, 0.2); border: 2px solid var(--coral); color: #fff !important; font-weight: 700; }

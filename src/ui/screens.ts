@@ -22,10 +22,10 @@ export class Screens {
     this.el.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
       if (!btn || btn.hasAttribute('disabled')) return;
-      sfx.unlock();
       const act = btn.dataset.act!;
-      sfx.play(act === 'back' || act === 'menu' ? 'ui_back' : 'ui_click');
       this.actions[act]?.();
+      sfx.unlock();
+      sfx.play(act === 'back' || act === 'menu' ? 'ui_back' : 'ui_click');
     });
     this.el.addEventListener('pointerover', (e) => {
       const btn = (e.target as HTMLElement).closest('.btn');
@@ -52,6 +52,7 @@ export class Screens {
     this.show(
       `<img class="logo-img" src="${import.meta.env.BASE_URL}img/logo.webp" alt="${tuning.game.title}">
        <p class="tagline">링크 하나로 바로 치는 3D 스쿼시</p>
+       ${matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches ? '<p class="touch-note">키보드·마우스로 하는 게임이에요. PC 브라우저에서 열어주세요!</p>' : ''}
        <div class="btns"><button class="btn primary" data-act="start">시작하기</button></div>`,
       a,
     );

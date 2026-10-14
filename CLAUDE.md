@@ -9,9 +9,11 @@
 
 ## 명령
 - `npm run dev` → http://localhost:5173/squash-rally/
-- `npm test` — 룰/물리/제스처 단위 테스트 (Vitest)
+- `npm test` — 룰/물리/스윙 단위 테스트 (Vitest)
 - `npm run e2e` — Playwright 스크린샷/FPS (`tests/e2e/`, 결과는 `test-results/`)
+- `npm run e2e:prod` — 배포 빌드(vite preview)로 크롬·파이어폭스·웹킷 스모크 테스트 (`tests/prod/`)
 - `npm run build` / `npm run preview`
+- 디자인 리소스 가공: `python scripts/build_design.py` → `node scripts/build-og.mjs` (로고·파비콘·공유 썸네일)
 - 배포: `main`에 push하면 `.github/workflows/deploy.yml`이 Pages에 배포
 
 ## 폴더
