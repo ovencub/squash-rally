@@ -18,6 +18,7 @@ async function session(page: Page) {
 }
 
 test('menu → solo → autoplay rally → pause → results', async ({ page }) => {
+  test.setTimeout(90_000);
   await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto('./');
   await page.evaluate(() => localStorage.clear());

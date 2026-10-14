@@ -8,6 +8,7 @@ import { type BallContact, type BallState, type Surface, type Vec3 } from '../ph
 import { predict, type Prediction } from '../physics/predict';
 import { awardRally, newMatch, type MatchState } from '../rules/par';
 import { type PlayerId, type RallyResult } from '../rules/rally';
+import { type Arena } from '../render/arena';
 import { BallView } from '../render/ball-view';
 import { CameraRig } from '../render/camera';
 import { animateCharacter, createCharacter, SWING_CONTACT, type Character } from '../render/character';
@@ -163,9 +164,9 @@ export class Game {
     this.session = new SoloSession(difficulty);
     this.courtMesh = createCourtMesh(this.world.court);
     const t = tPosition(this.world.court);
-    this.A = this.makeAthlete('A', palette.playerShirt, t.x, t.z + 0.6);
+    this.A = this.makeAthlete('A', palette.playerShirt, palette.accent, t.x, t.z + 0.6);
     if (mode === 'match') {
-      this.B = this.makeAthlete('B', palette.aiShirt, t.x - 1, t.z);
+      this.B = this.makeAthlete('B', palette.aiShirt, 0xffffff, t.x - 1, t.z);
       this.ai = new AiBrain(difficulty, this.rng);
       this.scoreWall = new ScoreWall(this.world.court);
       this.match = newMatch('A');
@@ -180,8 +181,8 @@ export class Game {
     else this.setupServe();
   }
 
-  private makeAthlete(id: PlayerId, shirt: number, x: number, z: number): Athlete {
-    return { id, mover: createMover(x, z), ch: createCharacter(shirt), swingAnim: null, swingHand: 'fore', swingCooldown: 0, target: null, stepAcc: 0 };
+  private makeAthlete(id: PlayerId, shirt: number, trim: number, x: number, z: number): Athlete {
+    return { id, mover: createMover(x, z), ch: createCharacter(shirt, trim), swingAnim: null, swingHand: 'fore', swingCooldown: 0, target: null, stepAcc: 0 };
   }
 
   private objects(): THREE.Object3D[] {
@@ -200,6 +201,10 @@ export class Game {
     if (this.B) list.push(this.B.ch.root);
     if (this.scoreWall) list.push(this.scoreWall.mesh);
     return list;
+  }
+
+  private get arena(): Arena {
+    return this.courtMesh.userData.arena as Arena;
   }
 
   dispose(): void {
@@ -321,6 +326,7 @@ export class Game {
     if (human) this.swingTrail.setWidth(0.6 + 0.4 * strength);
     sfx.play(grade === 'perfect' ? 'hit_perfect' : grade === 'good' ? 'hit_hard' : 'hit_soft', (0.55 + 0.45 * strength) * (human ? 1 : 0.8));
     if (newBest && this.session.combo > 1) sfx.play('combo_up', 0.6);
+    if (human && grade === 'perfect') this.arena.cheer(0.12);
     this.hooks.onHit({ by: who.id, grade, score, hint, at: from, speed: plan.speed, hand: input.hand, newBest });
   }
 
@@ -459,6 +465,7 @@ export class Game {
       const last = m.history[m.history.length - 1];
       this.scoreWall?.set(last.A, last.B);
     }
+    this.arena.cheer(m.gameJustWon ? 1 : r.winner === 'A' ? 0.7 : 0.35);
     this.matchPhase = m.winner ? 'over' : 'pointEnd';
     this.phaseTimer = (m.gameJustWon ? tuning.match.gamePauseMs : tuning.match.pointPauseMs) / 1000;
     this.hooks.onRallyEnd(r);
@@ -577,6 +584,8 @@ export class Game {
       this.swingTrail.push(this.tmpA, this.tmpB);
     }
     this.swingTrail.update(frozen ? 0 : realDt);
+
+    this.arena.tick(performance.now() / 1000);
 
     // 공 + FX
     const shownBall = b ?? this.serveBall();

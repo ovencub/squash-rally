@@ -351,6 +351,7 @@ function frame(now: number) {
     sideEl.textContent = game.ballSide === 'fore' ? '포핸드 (우클릭)' : game.ballSide === 'back' ? '백핸드 (좌클릭)' : '';
     renderer.render(scene, game.rig.camera);
   } else {
+    (backdrop?.userData.arena as { tick: (t: number) => void } | undefined)?.tick(now / 1000);
     renderer.render(scene, backdropRig.camera);
   }
   if (bannerTimer > 0 && (bannerTimer -= dt) <= 0) banner.classList.remove('show');

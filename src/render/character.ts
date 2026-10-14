@@ -53,7 +53,7 @@ interface Pose {
   armL: { x: number; z: number; elbow: number };
 }
 
-function part(geo: THREE.BufferGeometry, color: number, outline = 0.012): THREE.Mesh {
+function part(geo: THREE.BufferGeometry, color: number, outline = 0.018): THREE.Mesh {
   const m = new THREE.Mesh(geo, toon(color));
   addOutline(m, outline);
   return m;
@@ -62,13 +62,13 @@ function part(geo: THREE.BufferGeometry, color: number, outline = 0.012): THREE.
 /** 피벗 아래로 len 길이 캡슐 */
 function bone(len: number, radius: number, color: number): THREE.Group {
   const g = new THREE.Group();
-  const m = part(new THREE.CapsuleGeometry(radius, Math.max(0.01, len - radius * 2), 4, 8), color, 0.01);
+  const m = part(new THREE.CapsuleGeometry(radius, Math.max(0.01, len - radius * 2), 4, 8), color, 0.016);
   m.position.y = -len / 2;
   g.add(m);
   return g;
 }
 
-function makeLeg(pelvis: THREE.Group, x: number): Leg {
+function makeLeg(pelvis: THREE.Group, x: number, accent: number): Leg {
   const hip = bone(THIGH, 0.05, palette.limb);
   hip.position.set(x, -0.02, 0);
   pelvis.add(hip);
@@ -78,13 +78,20 @@ function makeLeg(pelvis: THREE.Group, x: number): Leg {
   const foot = new THREE.Group();
   foot.position.y = -SHIN;
   knee.add(foot);
-  const shoe = part(new THREE.BoxGeometry(0.11, 0.07, 0.24), palette.shorts);
-  shoe.position.set(0, -0.015, -0.05);
+  const shoe = part(new THREE.BoxGeometry(0.11, 0.07, 0.24), 0xf4f1fa, 0.014);
+  shoe.position.set(0, -0.005, -0.05);
   foot.add(shoe);
+  const sole = new THREE.Mesh(new THREE.BoxGeometry(0.115, 0.025, 0.245), toon(accent));
+  sole.position.set(0, -0.045, -0.05);
+  foot.add(sole);
+  // 짧은 양말
+  const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.047, 0.047, 0.07, 10), toon(0xffffff));
+  sock.position.y = 0.06;
+  foot.add(sock);
   return { hip, knee, foot };
 }
 
-function makeArm(spine: THREE.Group, x: number): Arm {
+function makeArm(spine: THREE.Group, x: number, accent: number | null): Arm {
   const shoulder = bone(UPPER_ARM, 0.036, palette.limb);
   shoulder.position.set(x, 0.47, 0);
   spine.add(shoulder);
@@ -94,8 +101,14 @@ function makeArm(spine: THREE.Group, x: number): Arm {
   const hand = new THREE.Group();
   hand.position.y = -FOREARM;
   elbow.add(hand);
-  const fist = part(new THREE.SphereGeometry(0.04, 8, 6), palette.skin, 0.008);
+  const fist = part(new THREE.SphereGeometry(0.04, 8, 6), palette.skin, 0.01);
   hand.add(fist);
+  if (accent !== null) {
+    // 손목 밴드
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.06, 10), toon(accent));
+    band.position.y = 0.05;
+    hand.add(band);
+  }
   return { shoulder, elbow, hand };
 }
 
@@ -114,7 +127,8 @@ function basePose(): Pose {
   };
 }
 
-export function createCharacter(shirt: number): Character {
+/** shirt: 유니폼 색, trim: 포인트 색(줄무늬·밑창·밴드) */
+export function createCharacter(shirt: number, trim: number = palette.accent): Character {
   const root = new THREE.Group();
   const pelvis = new THREE.Group();
   root.add(pelvis);
@@ -126,9 +140,17 @@ export function createCharacter(shirt: number): Character {
   const spine = new THREE.Group();
   spine.position.y = 0.08;
   pelvis.add(spine);
-  const torso = part(new THREE.CylinderGeometry(0.2, 0.16, 0.48, 10), shirt);
+  const torso = part(new THREE.CylinderGeometry(0.2, 0.16, 0.48, 12), shirt);
   torso.position.y = 0.26;
   spine.add(torso);
+  // 유니폼 가로 줄무늬 + 어깨 라인
+  const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.193, 0.185, 0.06, 12), toon(trim));
+  stripe.position.y = 0.33;
+  spine.add(stripe);
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.018, 6, 16), toon(trim));
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = 0.5;
+  spine.add(collar);
   const head = part(new THREE.SphereGeometry(0.17, 16, 12), palette.skin);
   head.position.y = 0.68;
   spine.add(head);
@@ -138,10 +160,18 @@ export function createCharacter(shirt: number): Character {
   const band = new THREE.Mesh(new THREE.CylinderGeometry(0.176, 0.176, 0.05, 16), toon(palette.headband));
   band.position.y = 0.71;
   spine.add(band);
+  // 얼굴 (앞쪽 -z): 동그란 눈 두 개 — 마주 보는 AI에서 보임
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x1a1a22 });
+  for (const ex of [-0.055, 0.055]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), eyeMat);
+    eye.position.set(ex, 0.665, -0.162);
+    eye.scale.set(1, 1.3, 0.5);
+    spine.add(eye);
+  }
 
-  const legs: [Leg, Leg] = [makeLeg(pelvis, -0.1), makeLeg(pelvis, 0.1)];
-  const armL = makeArm(spine, -0.22);
-  const armR = makeArm(spine, 0.22);
+  const legs: [Leg, Leg] = [makeLeg(pelvis, -0.1, trim), makeLeg(pelvis, 0.1, trim)];
+  const armL = makeArm(spine, -0.22, null);
+  const armR = makeArm(spine, 0.22, trim);
 
   // 라켓: 손에서 아래팔 방향으로 뻗음
   const racket = new THREE.Group();
@@ -165,6 +195,15 @@ export function createCharacter(shirt: number): Character {
   racketHead.position.copy(frame.position);
   racket.add(racketHead);
   armR.hand.add(racket);
+
+  // 발밑 그림자 (바닥 기준, 골반 높이와 무관)
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.32, 20).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false }),
+  );
+  shadow.position.y = 0.008;
+  shadow.renderOrder = 9;
+  root.add(shadow);
 
   const ch: Character = {
     root,

@@ -7,6 +7,17 @@ import { type MatchState } from '../rules/par';
 
 // 메뉴 화면들 (기획서 3-10 화면 흐름). DOM 문자열 + data-act 버튼 위임.
 
+/** 라켓 + 공 아이콘 (로고용 인라인 SVG) */
+const RACKET_SVG = `<svg viewBox="0 0 64 80" aria-hidden="true">
+  <ellipse cx="30" cy="26" rx="20" ry="24" fill="#2a1f52" stroke="#ffc93c" stroke-width="5"/>
+  <g stroke="#ffc93c" stroke-opacity=".55" stroke-width="1.6">
+    <line x1="18" y1="8" x2="18" y2="44"/><line x1="26" y1="4" x2="26" y2="49"/><line x1="34" y1="4" x2="34" y2="49"/><line x1="42" y1="8" x2="42" y2="44"/>
+    <line x1="12" y1="16" x2="48" y2="16"/><line x1="10" y1="25" x2="50" y2="25"/><line x1="11" y1="34" x2="49" y2="34"/><line x1="15" y1="42" x2="45" y2="42"/>
+  </g>
+  <rect x="26" y="49" width="8" height="28" rx="3" fill="#ff5a5f" stroke="#1a1238" stroke-width="2"/>
+  <circle cx="54" cy="58" r="7" fill="#1a1a22" stroke="#f6f2ea" stroke-width="2"/><circle cx="52" cy="56" r="1.6" fill="#ffc93c"/>
+</svg>`;
+
 export const DIFF_LABEL: Record<Difficulty, string> = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
 type Actions = Record<string, () => void>;
@@ -50,15 +61,17 @@ export class Screens {
 
   title(a: { start: () => void }): void {
     this.show(
-      `<div class="logo">${tuning.game.title}<small>3D SQUASH</small></div>
+      `<div class="logo-wrap">${RACKET_SVG}<div class="logo">${tuning.game.title}</div></div>
+       <p class="tagline">링크 하나로 바로 치는 3D 스쿼시</p>
        <div class="btns"><button class="btn primary" data-act="start">시작하기</button></div>`,
       a,
     );
+    this.el.querySelector('.panel')!.classList.add('title-panel');
   }
 
   main(a: { solo: () => void; ai: () => void; howto: () => void; settings: () => void }): void {
     this.show(
-      `<div class="logo" style="font-size:44px">${tuning.game.title}</div>
+      `<div class="logo-wrap">${RACKET_SVG}<div class="logo" style="font-size:44px">${tuning.game.title}</div></div>
        <div class="btns">
          <button class="btn primary" data-act="solo">1인 모드<span class="sub">혼자 벽치기 · 콤보 기록 도전</span></button>
          <button class="btn" data-act="ai">AI 대전<span class="sub">11점 · 3전 2선승</span></button>
