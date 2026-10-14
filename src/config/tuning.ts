@@ -11,8 +11,9 @@ export const tuning = {
 
   court: {
     // 기획서 3-2. 공 물리는 동일, 코트만 줄어든다.
+    // easy는 M0 피드백("지금보다 커도 좋다")으로 실제 규격보다 약간 크게 시작.
     scale: {
-      easy: { length: 1.0, width: 1.0 },
+      easy: { length: 1.15, width: 1.12 },
       normal: { length: 0.85, width: 0.9 },
       hard: { length: 0.7, width: 0.8 },
     } as Record<Difficulty, { length: number; width: number }>,
@@ -20,6 +21,22 @@ export const tuning = {
     scaleHeightLines: false,
     // 렌더링용 벽 높이(아웃 라인 위 여유)
     wallMarginAbove: 0.45,
+    // 라인 폭(실제 50mm). 라인 위 = 아웃/폴트 판정에 사용
+    lineWidth: 0.05,
+  },
+
+  physics: {
+    substepHz: 240, // 고정 시뮬레이션 주파수
+    gravity: 9.81,
+    ballRadius: 0.02, // 실제 40mm 공 (판정용). 화면에는 fx.ballVisualScale 배로 크게 그림
+    drag: 0.016, // 2차 공기저항 계수 k (가속도 = -k|v|v)
+    // 면별 반발계수 (법선 속도 유지 비율)
+    restitution: { front: 0.62, side: 0.6, back: 0.55, floor: 0.5, tin: 0.12 },
+    // 면별 접선 속도 유지 비율 (마찰)
+    tangentRetain: { wall: 0.88, floor: 0.8 },
+    rollThreshold: 0.6, // 바닥 법선 속도가 이보다 작으면 굴러감(= 추가 바운드로 간주)
+    rollFriction: 1.5, // 구를 때 감속 (m/s²)
+    maxSubstepsPerFrame: 24,
   },
 
   camera: {
@@ -39,6 +56,19 @@ export const tuning = {
     fitTopExtra: 0.8, // 앞벽 위 스폰서 보드까지 화면에 넣는 높이(m)
     minFov: 35,
     maxFov: 80,
+  },
+
+  fx: {
+    ballVisualScale: 4, // 화면상 공 크기 배율 (판정에는 영향 없음)
+  },
+
+  debug: {
+    showPrediction: true,
+    showContacts: true,
+    predictSeconds: 3,
+    timeScale: 1, // 슬로모 (1 = 정상)
+    // 공 발사기: 캐릭터 위치에서 앞벽(-z) 방향으로 발사 (Space)
+    launcher: { y: 0.9, speed: 18, elevationDeg: 12, aimDeg: 0, serve: false },
   },
 
   player: {

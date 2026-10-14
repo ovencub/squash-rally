@@ -148,7 +148,7 @@ export function createCourtMesh(c: CourtDims): THREE.Group {
     root.add(new THREE.Mesh(lineGeo, flat(palette.line, { side: THREE.DoubleSide })));
     // 벽 윗면 몰딩
     const trim = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, Math.hypot(L, frontH - backH)), flat(palette.wallTrim));
-    trim.position.set(s * (hw + 0.04), (frontH + backH) / 2, L / 2);
+    trim.position.set(s * (hw + 0.06), (frontH + backH) / 2, L / 2);
     trim.rotation.x = Math.atan2(frontH - backH, L);
     root.add(trim);
   }

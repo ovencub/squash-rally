@@ -69,6 +69,7 @@ WSF 기준값(배율 1.0):
 - `ball.ts`: 상태 `{pos, vel, spin}`. 적분: 반암시적 오일러, 중력 + 2차 공기저항(`dragK·|v|·v`). 스핀은 스칼라 백/톱스핀 근사(바닥 바운드 시 수평 속도 보정).
 - `collide.ts`: 서브스텝마다 이동 구간에 대해 각 평면 통과 시각 `t∈[0,dt]`를 계산(공 반지름 오프셋). 가장 이른 접촉부터 처리 → 반사(법선 성분 × `restitution[surface]`, 접선 × `(1-friction[surface])`) → 남은 시간 계속. 접촉마다 `BallContact {surface, point, normalSpeed, time}` 발행.
   - surface: `front | left | right | back | floor | tin | ceiling`(ceiling = 아웃 처리용 가상면 없음; 아웃은 라인 높이로 판정).
+- `aim.ts`: 앞벽 목표점(x, y)과 속력 → 발사 속도 역산(실제 적분기로 반복 보정). `aimForLanding`은 첫 바운드 깊이까지 맞춰 속력을 이분 탐색. 스윙·AI·서브·디버그 프리셋 공용.
 - `predict.ts`: 같은 적분기로 미래 궤적 샘플링(최대 N초). 반환: 점 배열 + 접촉 목록 + "타격 가능 높이 구간 진입 시각/위치". AI·타이밍 링·디버그 예측선 공용.
 
 ### rules (순수 함수, 렌더/입력 의존 금지)
@@ -123,6 +124,7 @@ WSF 기준값(배율 1.0):
 
 | # | 항목 | 현재 값 | 위치 |
 |---|---|---|---|
+| — | easy 코트 크기 | 길이 1.15 × 폭 1.12 (M0 피드백: 실제 규격보다 커도 됨) | `tuning.court.scale.easy` |
 | 1 | 이동 방식 | WASD + easy 자동 보조 | `tuning.player.autoAssist` |
 | 2 | 드라이브/드롭 방향 | 아래→위 = 드라이브 | `tuning.input.invertDriveDrop` |
 | 3 | 높이 라인 축소 | 안 함 | `tuning.court.scaleHeightLines` |
