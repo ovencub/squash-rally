@@ -17,6 +17,22 @@ export interface AiContext {
   me: { x: number; z: number };
   opponent: { x: number; z: number };
   court: CourtDims;
+  /** 난이도 게임 속도 배율 (공 시간 → 실제 시간 환산) */
+  gameSpeed: number;
+}
+
+/**
+ * AI가 이번 공을 놓칠 확률. pressure = 필요 이동 속도 / AI 최고 속도, speedK = 타구 빠르기 0..1.
+ * 여유 있는 공(pressure ≤ 0.45, 느린 공)은 거의 다 받고, 급하고 빠를수록 크게 오른다. (최대 0.9)
+ */
+export function aiMissChance(
+  lv: { missBase: number; missPressure: number; missSpeed: number },
+  pressure: number,
+  speedK: number,
+): number {
+  const t = Math.max(0, Math.min(1, (pressure - 0.45) / 0.55));
+  const rushK = t * t * (3 - 2 * t); // 부드럽게 증가
+  return Math.min(0.9, lv.missBase + lv.missPressure * rushK + lv.missSpeed * speedK);
 }
 
 export interface AiDecision {
@@ -42,16 +58,42 @@ export class AiBrain {
     return tuning.ai.level[this.difficulty];
   }
 
-  /** 상대(플레이어)가 공을 친 순간 */
-  onOpponentHit(): void {
+  /** 마지막 타구에 대한 판단 (디버그·테스트용) */
+  lastDecision: { pressure: number; speedK: number; missProb: number; willMiss: boolean } | null = null;
+  private shotSpeed = 0;
+  private decided = false;
+
+  /** 상대(플레이어)가 공을 친 순간. shotSpeed = 친 공의 속력(m/s) */
+  onOpponentHit(shotSpeed = 0): void {
     this.reactLeft = this.lv.reactionMs / 1000;
     this.chasing = true;
     this.lockedIdeal = null;
+    this.shotSpeed = shotSpeed;
+    this.decided = false;
+    this.willMiss = false;
     const e = this.lv.standErrM;
     this.errOffset = { x: this.rng.gauss(e), z: this.rng.gauss(e) };
-    this.timingErr = this.rng.gauss(this.lv.timingSdMs) / 1000;
-    // 판단 실수: 타이밍을 완전히 놓쳐 이번 공은 치지 못한다
-    this.willMiss = this.rng.next() < this.lv.missChance;
+    this.timingErr = 0;
+  }
+
+  /**
+   * 공이 어디로 올지 보이면(반응 후 첫 판단) 이번 공의 난이도로 실수 여부와 타이밍 오차를 정한다.
+   * 멀리, 빨리 보낼수록 놓치거나 약하게 받을 확률이 올라간다.
+   */
+  private decide(target: { x: number; z: number }, me: { x: number; z: number }, arriveIn: number, gameSpeed: number): void {
+    const lv = this.lv;
+    const dist = Math.hypot(target.x - me.x, target.z - me.z);
+    const realTime = Math.max(0.05, arriveIn / gameSpeed); // 이동은 실제 시간 기준
+    const aiMax = tuning.player.maxSpeed * lv.speedRatio;
+    const pressure = dist / realTime / aiMax;
+    const S = tuning.shots;
+    const speedK = Math.max(0, Math.min(1, (this.shotSpeed - S.minSpeed) / (S.maxSpeed - S.minSpeed)));
+    const p = aiMissChance(lv, pressure, speedK);
+    this.willMiss = this.rng.next() < p;
+    const rush = 1 + (lv.timingRush - 1) * Math.min(1, Math.max(0, (pressure - 0.3) / 0.7) * 0.7 + speedK * 0.3);
+    this.timingErr = this.rng.gauss(lv.timingSdMs * rush) / 1000;
+    this.decided = true;
+    this.lastDecision = { pressure, speedK, missProb: p, willMiss: this.willMiss };
   }
 
   /** 내가 쳤거나 랠리가 끝남 */
@@ -90,6 +132,8 @@ export class AiBrain {
       x: Math.max(-lim, Math.min(lim, pick.x + this.errOffset.x)),
       z: Math.max(0.8, Math.min(c.length - 0.3, pick.z + this.errOffset.z)),
     };
+
+    if (!this.decided) this.decide(target, ctx.me, ring.t - b!.time, ctx.gameSpeed);
 
     let swing: SwingInput | null = null;
     if (returning) {

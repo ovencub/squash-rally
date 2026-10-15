@@ -135,7 +135,7 @@ export class Game {
   private wallMarks = new WallMarks();
   private shake = new Shake();
   readonly debugDraw = new DebugDraw();
-  private rng = new Rng(tuning.game.seed);
+  private rng = new Rng(tuning.game.seed ?? Math.floor(Math.random() * 2 ** 31));
 
   /** 키보드 이동 입력 (매 서브스텝 읽음) */
   moveInput = { x: 0, z: 0 };
@@ -335,7 +335,7 @@ export class Game {
         this.matchStats.hits++;
         if (grade === 'perfect') this.matchStats.perfects++;
       }
-      this.ai?.onOpponentHit();
+      this.ai?.onOpponentHit(plan.speed);
       this.net?.send({
         t: 'hit',
         by: who.id,
@@ -405,7 +405,8 @@ export class Game {
     this.impact.burst(from, 0.4);
     sfx.play('hit_hard', 0.7);
     if (who === this.A) {
-      this.ai?.onOpponentHit();
+      // 서브 속력은 코트 크기에 맞춰 자동으로 정해지는 값이라 '빠른 공' 가산을 하지 않음
+      this.ai?.onOpponentHit(0);
       this.net?.send({
         t: 'hit',
         by: who.id,
@@ -620,7 +621,15 @@ export class Game {
 
     // AI 판단 (프레임마다)
     if (this.B && this.ai && !this.paused && this.matchPhase === 'rally') {
-      const d = this.ai.update(realDt, { ball: b, pred: this.pred, rally: w.rally, me: this.aiPos!, opponent: this.playerPos, court: w.court });
+      const d = this.ai.update(realDt, {
+        ball: b,
+        pred: this.pred,
+        rally: w.rally,
+        me: this.aiPos!,
+        opponent: this.playerPos,
+        court: w.court,
+        gameSpeed: tuning.court.gameSpeed[this.difficulty],
+      });
       this.B.target = d.target;
       if (d.swing && this.B.swingCooldown <= 0 && b && w.rally.phase === 'returning' && w.rally.lastHitter === this.me) {
         this.executeHit(this.B, d.swing, this.errMsFor(this.B));

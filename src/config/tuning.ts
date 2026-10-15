@@ -6,7 +6,8 @@ export type Difficulty = 'easy' | 'normal' | 'hard';
 export const tuning = {
   game: {
     title: 'SQUASH RALLY',
-    seed: 20261015,
+    // 게임 로직 랜덤 시드. null이면 경기마다 새로 뽑음 (고정하면 매 경기 같은 AI 판단이 반복됨 — 첫 서브 버그 원인)
+    seed: null as number | null,
   },
 
   court: {
@@ -116,13 +117,26 @@ export const tuning = {
     level: {
       // reactionMs: 상대가 친 뒤 움직이기 시작할 때까지, standErrM: 서는 위치 오차(표준편차),
       // timingSdMs: 스윙 타이밍 오차(표준편차), speedRatio: 기본 이동 속도 대비, aim: 노리는 방향
-      // missChance: 타구마다 판단 실수(한참 늦게 휘두름)로 놓칠 확률
-      easy: { reactionMs: 420, standErrM: 0.5, timingSdMs: 110, speedRatio: 0.72, missChance: 0.16, aim: 'center' },
-      normal: { reactionMs: 280, standErrM: 0.28, timingSdMs: 65, speedRatio: 0.88, missChance: 0.08, aim: 'mixed' },
-      hard: { reactionMs: 170, standErrM: 0.12, timingSdMs: 38, speedRatio: 1.0, missChance: 0.035, aim: 'away' },
+      // 놓칠 확률 = missBase + missPressure × (얼마나 급하게 뛰어야 하나) + missSpeed × (공이 얼마나 빠른가)
+      //   급함 = 필요한 이동 속도 / AI 최고 속도 (0.45 이하는 여유, 1 이상은 물리적으로도 못 감)
+      //   빠르기 = 플레이어 타구 속력을 최저~최고 속력 사이 0..1로
+      // 급하고 빠를수록 타이밍 오차도 커져(최대 timingRush배) 받아도 약하게 넘어온다
+      easy: { reactionMs: 420, standErrM: 0.5, timingSdMs: 110, speedRatio: 0.72, missBase: 0.05, missPressure: 0.55, missSpeed: 0.25, timingRush: 2.2, aim: 'center' },
+      normal: { reactionMs: 280, standErrM: 0.28, timingSdMs: 65, speedRatio: 0.88, missBase: 0.025, missPressure: 0.4, missSpeed: 0.15, timingRush: 1.9, aim: 'mixed' },
+      hard: { reactionMs: 170, standErrM: 0.12, timingSdMs: 38, speedRatio: 1.0, missBase: 0.01, missPressure: 0.25, missSpeed: 0.08, timingRush: 1.6, aim: 'away' },
     } as Record<
       Difficulty,
-      { reactionMs: number; standErrM: number; timingSdMs: number; speedRatio: number; missChance: number; aim: 'center' | 'mixed' | 'away' }
+      {
+        reactionMs: number;
+        standErrM: number;
+        timingSdMs: number;
+        speedRatio: number;
+        missBase: number;
+        missPressure: number;
+        missSpeed: number;
+        timingRush: number;
+        aim: 'center' | 'mixed' | 'away';
+      }
     >,
     serveDelayMs: 1000, // AI 서브 전 대기
     // AI가 칠 때 타격감은 약하게 (내가 칠 때가 더 짜릿하게)
