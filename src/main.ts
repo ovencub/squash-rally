@@ -5,7 +5,7 @@ import { tuning, type Difficulty } from './config/tuning';
 import { Game, type HitEvent, type MatchStats, type Mode, type WhiffReason } from './game/game';
 import { type Hand } from './game/swing';
 import { TouchControls } from './input/touch';
-import { normalizeCode, OnlineSession, roomLink } from './net/online';
+import { JoinError, normalizeCode, OnlineSession, roomLink } from './net/online';
 import { type NetMsg } from './net/protocol';
 import { BALL_SCALE, loadSettings, saveSettings } from './game/settings';
 import { type Vec3 } from './physics/ball';
@@ -107,6 +107,26 @@ function syncSpeedUi() {
   tuning.fx.ballVisualScale = BALL_SCALE[settings.ballSize];
   applyControlMode();
 }
+
+// ── 모바일 화면 확대 방지 (iOS 사파리는 viewport user-scalable=no를 무시하므로 이벤트로 막음) ──
+let lastTap = { t: 0, x: 0, y: 0 };
+document.addEventListener(
+  'touchend',
+  (e) => {
+    const now = performance.now();
+    const p = e.changedTouches[0];
+    const t = e.target as HTMLElement | null;
+    // 같은 자리를 빠르게 두 번 탭(= 더블탭 확대 제스처)일 때만 기본 동작을 막음. 버튼·입력창은 CSS(touch-action)로 이미 확대가 막혀 있어 제외
+    const same = p && Math.hypot(p.clientX - lastTap.x, p.clientY - lastTap.y) < 40;
+    if (now - lastTap.t < 350 && same && !t?.closest('button, input, textarea, .btn, [data-act], [data-seg]')) e.preventDefault();
+    lastTap = { t: now, x: p?.clientX ?? 0, y: p?.clientY ?? 0 };
+  },
+  { passive: false },
+);
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+// 두 손가락 핀치 확대 방지
+document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
 
 // ── 모바일 터치 조작 ──
 const touch = new TouchControls(ui, {
@@ -445,6 +465,7 @@ function showOnline() {
           n.send({ t: 'start', difficulty: d });
           beginOnline(d);
         };
+        n.onStatus = (st) => screens.setWaitingStatus(st);
       } catch {
         screens.message('방을 만들지 못했어요', '네트워크를 확인하고 다시 시도해 주세요', { ok: showOnline });
       }
@@ -459,13 +480,29 @@ async function joinRoom(raw: string) {
     screens.message('코드를 확인해 주세요', '친구에게 받은 6자리 코드를 입력해요', { ok: showOnline });
     return;
   }
-  screens.onlineConnecting(code, { cancel: () => (closeNet(), showMain()) });
+  let cancelled = false;
+  screens.onlineConnecting(code, { cancel: () => ((cancelled = true), closeNet(), showMain()) });
   try {
-    const n = await OnlineSession.join(code);
+    const n = await OnlineSession.join(code, (attempt) => screens.setConnectingAttempt(attempt));
+    if (cancelled) return n.leave();
     wireNet(n, 'normal'); // 난이도는 호스트의 start 메시지로 정해짐
-  } catch {
+  } catch (e) {
     net = null;
-    screens.message('방을 찾지 못했어요', `코드 ${code}가 맞는지, 친구가 대기 화면에 있는지 확인해 주세요`, { ok: showOnline });
+    if (cancelled) return;
+    const kind = e instanceof JoinError ? e.kind : 'server';
+    const detail = e instanceof Error ? e.message : String(e);
+    const MSG = {
+      'not-found': [
+        '방을 찾지 못했어요',
+        `코드 <b>${code}</b>가 맞는지 확인해 주세요.<br>방장 화면이 <b>'친구를 기다리는 중'</b>에 떠 있어야 해요.<br>방장이 휴대폰이면 링크를 보낸 뒤 <b>게임 화면으로 돌아와</b> 있어야 해요.`,
+      ],
+      blocked: [
+        '방은 찾았지만 연결이 막혔어요',
+        '두 사람 중 한쪽 네트워크(일부 모바일 데이터, 회사·학교 와이파이)가 직접 연결을 막고 있어요.<br>둘 다 <b>집 와이파이</b>로 바꿔서 다시 시도해 보세요.',
+      ],
+      server: ['연결 서버에 접속하지 못했어요', '인터넷 연결을 확인하고 잠시 후 다시 시도해 주세요.'],
+    }[kind];
+    screens.message(MSG[0], `${MSG[1]}<br><small style="opacity:.5">(${detail})</small>`, { ok: showOnline });
   }
 }
 
@@ -572,7 +609,7 @@ function updateControlHud(now: number) {
 
 // ── 루프 ──
 const stats = { fps: 0, frames: 0 };
-Object.assign(window as object, { __stats: stats, __game: () => game, __startSolo: startSolo, __startMatch: startMatch, __tuning: tuning, __sfx: sfx });
+Object.assign(window as object, { __stats: stats, __game: () => game, __startSolo: startSolo, __startMatch: startMatch, __tuning: tuning, __sfx: sfx, __net: () => net });
 let fpsAcc = 0;
 let fpsFrames = 0;
 let last = performance.now();

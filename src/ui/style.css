@@ -230,6 +230,10 @@ input[type=range] { width: 180px; accent-color: var(--yellow); }
 /* ── 모바일 터치 조작 ── */
 body.mobile .pc-only { display: none !important; }
 html, body { overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+/* 더블탭 확대 방지: 모든 요소는 확대 제스처 없이 탭만, 게임 영역은 제스처 전부 차단 */
+html, body, #ui, #ui * { touch-action: manipulation; }
+#game, .touch, .touch * { touch-action: none !important; }
+input, textarea { -webkit-user-select: text; user-select: text; }
 .touch { position: absolute; inset: 0; pointer-events: none; touch-action: none; }
 .touch .t-zone { position: absolute; left: 0; top: 18%; width: 50%; bottom: 0; pointer-events: auto; touch-action: none; }
 .touch .t-base {

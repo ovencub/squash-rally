@@ -50,6 +50,16 @@ test('mobile touch controls', async ({ page }) => {
   console.log('[move]', JSON.stringify(before), '→', JSON.stringify(after));
   expect(after.x).toBeGreaterThan(before.x + 0.5);
 
+  // 더블탭 확대 방지: 화면 어디든 두 번 빠르게 탭해도 확대 배율 1 유지
+  for (const [x, y] of [[vp.width * 0.5, vp.height * 0.4], [vp.width * 0.5, vp.height * 0.05], [x0, y0]]) {
+    await page.touchscreen.tap(x, y);
+    await page.waitForTimeout(80);
+    await page.touchscreen.tap(x, y);
+    await page.waitForTimeout(400);
+  }
+  expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);
+  expect(await page.evaluate(() => getComputedStyle(document.body).touchAction)).toBe('manipulation');
+
   // 버튼: 포핸드/백핸드 탭 → 스윙(헛스윙 팝업이라도 떠야 함)
   await page.locator('.t-btn.fore').tap();
   await expect(page.locator('.popup').first()).toBeVisible({ timeout: 1000 });

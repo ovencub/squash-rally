@@ -232,6 +232,8 @@ export class Screens {
        <p>이 링크를 친구에게 보내세요 · 난이도 ${DIFF_LABEL[d]}</p>
        <div class="link-box"><span class="link-text">${link}</span><button class="btn" data-act="copy">링크 복사</button></div>
        <p>또는 코드 <b class="room-code">${code}</b></p>
+       <p class="note wait-status">● 방 열림 · 친구가 들어오면 바로 시작해요</p>
+       <p class="note">휴대폰이라면 링크를 보낸 뒤 <b>이 화면으로 돌아와</b> 주세요 (다른 앱에 있으면 방이 잠시 닫혀요)</p>
        <div class="btns"><button class="btn ghost" data-act="cancel">취소</button></div>`,
       {
         copy: () => {
@@ -245,11 +247,23 @@ export class Screens {
     );
   }
 
+  /** 방장 대기 화면의 연결 상태 갱신 */
+  setWaitingStatus(st: 'ready' | 'reconnecting'): void {
+    const el = this.el.querySelector('.wait-status');
+    if (el) el.textContent = st === 'ready' ? '● 방 열림 · 친구가 들어오면 바로 시작해요' : '◐ 방 다시 여는 중…';
+  }
+
+  /** 참가 중 재시도 횟수 표시 */
+  setConnectingAttempt(n: number): void {
+    const el = this.el.querySelector('.join-status');
+    if (el) el.textContent = n <= 1 ? '친구의 방을 찾고 있어요' : `방을 다시 찾는 중… (${n}번째 시도)`;
+  }
+
   onlineConnecting(code: string, a: { cancel: () => void }): void {
     this.show(
       `<h2>방 ${code}에 연결 중…</h2>
        <div class="spinner"></div>
-       <p>친구의 방을 찾고 있어요</p>
+       <p class="join-status">연결 서버에 접속 중…</p>
        <div class="btns"><button class="btn ghost" data-act="cancel">취소</button></div>`,
       a,
     );
