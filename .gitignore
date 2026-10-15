@@ -6,3 +6,6 @@ assets/sfx/_downloads/
 *.log
 # 타사 게임 영상/스크린샷 — 공개 저장소에 올리지 않음 (로컬 참고용)
 references/
+
+# 플레이 영상 촬영 결과 (tests/e2e/record.spec.ts)
+recordings/

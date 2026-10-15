@@ -22,7 +22,7 @@ test('sound bank loads and renders', async ({ page }) => {
   await expect.poll(() => page.evaluate(() => (window as unknown as { __sfx: S }).__sfx.loaded), { timeout: 10000 }).toBeGreaterThanOrEqual(14);
   mkdirSync('test-results/sound/parts', { recursive: true });
   mkdirSync('test-results/sound/k', { recursive: true });
-  for (const n of ['hit_soft', 'hit_hard', 'hit_perfect', 'bounce_front', 'bounce_glass', 'bounce_floor', 'tin', 'squeak', 'step']) {
+  for (const n of ['hit_soft', 'hit_hard', 'hit_perfect', 'bounce_front', 'bounce_glass', 'bounce_floor', 'tin', 'squeak', 'step', 'plant']) {
     const data = await page.evaluate(async (name) => Array.from(await (window as unknown as { __sfx: S }).__sfx.renderDry(name)), n);
     writeFileSync(`test-results/sound/${n}.wav`, wav(data));
     // 세기별 (약하게 / 세게)

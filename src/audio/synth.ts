@@ -336,6 +336,11 @@ export const SYNTH: Record<string, Synth> = {
   match_hit: (c, o, t, v, p, k) => crack(c, o, t, v * 2.2 * (0.35 + 0.65 * k), k, 1500 * p, 2500 * p, 170, 0.18),
   match_wall: (c, o, t, v, p, k) => crack(c, o, t, v * 2.2 * (0.3 + 0.7 * k), k, 1400 * p, 2300 * p, 150, 0.2),
   match_glass: (c, o, t, v, p, k) => crack(c, o, t, v * 1.8 * (0.3 + 0.7 * k), k, 1200 * p, 2000 * p, 160, 0.16),
+  // 런지·급정지 때 발을 세게 디디는 '쿵/텁' (실제 경기 분석: 80~100Hz 중심 낮은 쿵, 200Hz 위는 약 -20dB의 부드러운 텁)
+  plant: (c, o, t, v, p, k) => {
+    modeDrop(c, o, t, v * (0.28 + 0.24 * k), 105 * p, 66 * p, 0.035, 0.002);
+    crack(c, o, t, v * (2.6 + 2.6 * k), 0, 1700 * p, 0, 110, 0.05);
+  },
   match_floor: (c, o, t, v, p, k) => crack(c, o, t, v * 2.0 * (0.3 + 0.7 * k), k, 1100 * p, 2000 * p, 140, 0.14),
   hit_soft: (c, o, t, v, p) => {
     hp(c, o, t, v * 0.7, 4200 * p, 0.018);

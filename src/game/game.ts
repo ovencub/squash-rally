@@ -480,7 +480,7 @@ export class Game {
     a.stepAcc += speed * dt;
     if (a.stepAcc >= tuning.audio.stepStride) {
       a.stepAcc = 0;
-      if (tuning.audio.moveSounds) sfx.play('step', vol * Math.min(1, 0.3 + speed / 8));
+      if (tuning.audio.moveSounds && tuning.audio.footsteps) sfx.play('step', vol * Math.min(1, 0.3 + speed / 8));
     }
   }
 
@@ -689,6 +689,12 @@ export class Game {
         aimBall: aim,
       });
       a.snap = false;
+      // 런지·급정지로 발을 세게 디딘 순간 '쿵' (상대는 작게)
+      const plants = a.ch.loco.plants;
+      while (plants.length) {
+        const k = plants.pop()!;
+        if (tuning.audio.moveSounds) sfx.play('plant', tuning.audio.plantVol * (0.45 + 0.55 * k) * (a === this.A ? 1 : 0.6), 1, k);
+      }
     }
     this.A.ch.root.updateMatrixWorld(true);
     if (this.A.swingAnim !== null && !frozen) {

@@ -177,9 +177,12 @@ export const tuning = {
     // (실측 랠리: 앞벽 중앙값 18m/s, 옆벽 4~10, 바닥 2~7)
     impactFullSpeed: { front: 22, tin: 22, left: 11, right: 11, back: 11, floor: 7.5 },
     squeakVol: 0.45, // 신발 스퀵 (공 소리보다 작게)
-    // 이동 소리(발소리·신발 스퀵). 사용자 피드백: WASD를 누를 때 나는 소리는 빼고 조작 표시는 시각적으로만 → 끔.
-    // 나중에 실제 경기 레퍼런스로 다시 만들면 켤 것
-    moveSounds: false,
+    // 이동 소리(신발 스퀵 + 세게 디딘 발 '쿵')
+    moveSounds: true,
+    // 보통 걸음 발소리: 실제 경기 영상(real_rally) 분석 결과 보통 걸음은 거의 들리지 않고,
+    // 들리는 건 런지·급정지 때 발을 세게 디디는 낮은 '쿵'뿐 → 보통 걸음은 끄고 그 '쿵'만 냄 (plantVol)
+    footsteps: false,
+    plantVol: 0.55,
     // M5: 큰 돔 체육관 잔향
     reverb: 0.55, // 잔향 출력 크기 (0 = 없음)
     reverbSeconds: 2.8, // 예전 돔 잔향 길이 (RT60) — 사운드 비교 페이지의 옛 버전용

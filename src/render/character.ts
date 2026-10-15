@@ -495,6 +495,14 @@ export interface Loco {
   stopF: number;
   /** 최근 최고 속력 (급정지 세기 판단) */
   recentSpeed: number;
+  /** 지금 런지 중인 정도와 칠 쪽 발 (footHomes가 갱신) */
+  lungeW: number;
+  lead: number;
+  /** 발을 세게 디딘 순간들 (런지 착지·급정지 브레이크 발) — 세기 0..1. 게임이 꺼내서 '쿵' 소리를 냄 */
+  plants: number[];
+  /** 이번 런지·이번 급정지에서 이미 '쿵'을 냈는지 (한 번씩만) */
+  lungePlanted: boolean;
+  stopPlanted: boolean;
 }
 
 export function createLoco(): Loco {
@@ -527,6 +535,11 @@ export function createLoco(): Loco {
     stopX: 0,
     stopF: 0,
     recentSpeed: 0,
+    lungeW: 0,
+    lead: 1,
+    plants: [],
+    lungePlanted: false,
+    stopPlanted: true,
   };
 }
 
@@ -602,6 +615,9 @@ function footHomes(ch: Character, st: AnimState, run: number, swingW: number, le
     homes[brake] = [homes[brake][0] + L.stopX * 0.38 * k, homes[brake][1] + L.stopF * 0.38 * k];
     homes[1 - brake] = [homes[1 - brake][0] - L.stopX * 0.22 * k, homes[1 - brake][1] - L.stopF * 0.22 * k];
   }
+  L.lungeW = lungeW;
+  L.lead = lead;
+  if (lungeW < 0.2) L.lungePlanted = false;
   if (lungeW > 0) {
     // 런지: 공 쪽으로 크게 내딛고(멀수록), 뒷발은 뒤로 빼서 무게중심
     const side = lead === 1 ? 1 : -1;
@@ -666,6 +682,18 @@ function stepFeet(ch: Character, dt: number, homesLocal: [number, number][], spe
       if (ft.t >= 1) {
         ft.air = false;
         ft.h = 0;
+        // 세게 디딘 발: 런지(칠 쪽 발) 또는 급정지 브레이크 — 실제 경기에서 들리는 건 이 '쿵'뿐 (보통 걸음은 거의 안 들림)
+        // (런지 한 번, 급정지 한 번에 한 번씩만 — 자잘한 위치 조정 걸음은 소리 없음)
+        let hard = 0;
+        if (i === L.lead && L.lungeW > 0.45 && !L.lungePlanted) {
+          L.lungePlanted = true;
+          hard = L.lungeW * (0.55 + 0.45 * Math.min(1, speed / 4));
+        }
+        if (L.stopK > 0.3 && !L.stopPlanted) {
+          L.stopPlanted = true;
+          hard = Math.max(hard, L.stopK);
+        }
+        if (hard > 0.3 && L.plants.length < 4) L.plants.push(Math.min(1, hard));
         // 착지 충격: 골반이 살짝 눌렸다 올라옴 (빠를수록, 브레이크일수록 크게)
         L.dropV -= 0.3 + 0.8 * sp + 0.8 * braking;
       }
@@ -944,6 +972,7 @@ export function animateCharacter(ch: Character, dtIn: number, st: AnimState): vo
   if (braking > 0.5 && L.recentSpeed > 3 && L.stopK < 0.2) {
     const k = clamp((L.recentSpeed - 2) / 4.5, 0.35, 1);
     L.stopK = k;
+    L.stopPlanted = false;
     const n = Math.hypot(vxL, vfL) || 1;
     L.stopX = vxL / n;
     L.stopF = vfL / n;

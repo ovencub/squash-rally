@@ -17,6 +17,7 @@ export type SfxName =
   | 'tin'
   | 'squeak'
   | 'step'
+  | 'plant'
   | 'point_win'
   | 'point_lose'
   | 'game_win'
@@ -52,6 +53,7 @@ const BANK: Record<SfxName, Patch> = {
   tin: { file: 1, layer: ['tin', 0.5], wet: 0.55 },
   squeak: { file: 0, wet: 0.4 },
   step: { file: 0.35, wet: 0.22 },
+  plant: { file: 0, layer: ['plant', 1], wet: 1.2 },
   ui_hover: { file: 0.5, wet: 0 },
   ui_click: { file: 0.8, wet: 0 },
   ui_confirm: { file: 0.8, wet: 0 },
@@ -434,6 +436,14 @@ class Sfx {
       if (patch.layer && parts === 'both') SYNTH[patch.layer[0]]?.(off as unknown as AudioContext, off.destination, t, patch.layer[1], 1, k);
     } else SYNTH[name]?.(off as unknown as AudioContext, off.destination, t, 1, 1, k);
     return (await off.startRendering()).getChannelData(0);
+  }
+
+  /** 녹화용: 최종 출력(리미터 뒤)을 MediaStream으로 내보냄 */
+  captureStream(): MediaStream | null {
+    if (!this.ctx || !this.comp) return null;
+    const d = this.ctx.createMediaStreamDestination();
+    this.comp.connect(d);
+    return d.stream;
   }
 
   get running(): boolean {
