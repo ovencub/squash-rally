@@ -90,6 +90,32 @@ export function pop(ctx: AudioContext, out: AudioNode, t: number, vol: number, c
   src.stop(t + dur + 0.03);
 }
 
+/**
+ * 실제 경기 매칭 '탁' (real_rally.mp4 분석 기반): 공 소리는 음정 없는 넓은 대역 터짐.
+ * 200Hz~2.5kHz가 거의 평평하고 그 위는 완만히 줄어듦(2.5k 이상 평균 -7.5dB). 금속성 울림(뾰족한 공진) 없음.
+ * 모양: 1~2ms짜리 강한 첫 터짐 + 그보다 5dB 작은 몸통이 줄어듦(10ms에 약 -9dB) → 나머지는 경기장 잔향.
+ * k(세기)가 낮으면 고음이 덜 열리고(둔하게) 작다.
+ */
+export function crack(ctx: AudioContext, out: AudioNode, t: number, vol: number, k: number, lpBase: number, lpRange: number, hpf: number, bodyDecay: number) {
+  const chain = (v: number, decay: number) => {
+    const src = ctx.createBufferSource();
+    src.buffer = pinkNoise(ctx);
+    const h = ctx.createBiquadFilter();
+    h.type = 'highpass';
+    h.frequency.value = hpf;
+    h.Q.value = 0.6;
+    const l = ctx.createBiquadFilter();
+    l.type = 'lowpass';
+    l.frequency.value = lpBase + lpRange * k;
+    l.Q.value = 0.6;
+    src.connect(h).connect(l).connect(env(ctx, out, t, v, 0.0003, decay));
+    src.start(t);
+    src.stop(t + decay + 0.03);
+  };
+  chain(vol, 0.016); // 첫 터짐
+  chain(vol * 0.55, bodyDecay); // 몸통
+}
+
 /** 세기 곡선: 약한 공은 거의 몸통만, 셀수록 팝·크랙이 급격히 커진다 (0.15 → 0.15, 0.5 → 0.42, 1 → 1) */
 const popAmt = (k: number) => 0.1 + 0.9 * Math.pow(Math.max(0, Math.min(1, k)), 1.5);
 
@@ -137,6 +163,31 @@ export function mode(ctx: AudioContext, out: AudioNode, t: number, vol: number, 
 }
 
 let noiseBuf: AudioBuffer | null = null;
+/** 핑크 노이즈 (옥타브마다 같은 에너지 → 1/3옥타브 스펙트럼이 평평). 실제 공 소리 대역 모양과 같다 */
+let pinkBuf: AudioBuffer | null = null;
+function pinkNoise(ctx: AudioContext): AudioBuffer {
+  if (pinkBuf && pinkBuf.sampleRate === ctx.sampleRate) return pinkBuf;
+  const len = ctx.sampleRate * 0.5;
+  pinkBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = pinkBuf.getChannelData(0);
+  let seed = 4242;
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+  for (let i = 0; i < len; i++) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    const w = (seed / 0x7fffffff) * 2 - 1;
+    // Paul Kellet 필터
+    b0 = 0.99886 * b0 + w * 0.0555179;
+    b1 = 0.99332 * b1 + w * 0.0750759;
+    b2 = 0.969 * b2 + w * 0.153852;
+    b3 = 0.8665 * b3 + w * 0.3104856;
+    b4 = 0.55 * b4 + w * 0.5329522;
+    b5 = -0.7616 * b5 - w * 0.016898;
+    d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
+    b6 = w * 0.115926;
+  }
+  return pinkBuf;
+}
+
 function noise(ctx: AudioContext): AudioBuffer {
   if (noiseBuf && noiseBuf.sampleRate === ctx.sampleRate) return noiseBuf;
   const len = ctx.sampleRate * 0.5;
@@ -248,6 +299,10 @@ export const SYNTH: Record<string, Synth> = {
     mode(c, o, t, v * (0.03 + 0.05 * k), 1150 * p, 0.04);
     mode(c, o, t, v * 0.015, 2600 * p, 0.03);
   },
+  // ── 실제 경기 매칭 레이어 (사운드 비교 ⑦) ──
+  match_hit: (c, o, t, v, p, k) => crack(c, o, t, v * 2.2 * (0.35 + 0.65 * k), k, 1500 * p, 2500 * p, 170, 0.18),
+  match_wall: (c, o, t, v, p, k) => crack(c, o, t, v * 2.2 * (0.3 + 0.7 * k), k, 1400 * p, 2300 * p, 150, 0.2),
+  match_floor: (c, o, t, v, p, k) => crack(c, o, t, v * 2.0 * (0.3 + 0.7 * k), k, 1100 * p, 2000 * p, 140, 0.14),
   hit_soft: (c, o, t, v, p) => {
     hp(c, o, t, v * 0.7, 4200 * p, 0.018);
     tone(c, o, t, v * 0.6, 1100 * p, 420 * p, 0.04, 'sine');

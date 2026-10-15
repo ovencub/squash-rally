@@ -220,8 +220,10 @@ class Sfx {
 
   /** 마스터 리미터. 'soft' = 예전 설정(-10dB, 6:1, knee 30 → 큰 소리를 많이 누름), 사운드 비교용 */
   setLimiter(mode: 'peak' | 'soft'): void {
-    const c = this.comp;
-    if (!c) return;
+    if (this.comp) Sfx.limiterParams(this.comp, mode);
+  }
+
+  private static limiterParams(c: DynamicsCompressorNode, mode: 'peak' | 'soft'): void {
     if (mode === 'peak') {
       c.threshold.value = -3;
       c.knee.value = 2;
@@ -297,30 +299,59 @@ class Sfx {
       void ctx.resume().catch(() => {});
       return;
     }
-    this.playVoiceOn(ctx, this.bankVoice(name), vol * this.volume * tuning.audio.master, pitch, k);
+    this.wetOut!.gain.value = tuning.audio.reverb;
+    this.playVoiceOn(ctx, this.out, this.reverb, this.bankVoice(name), vol * this.volume * tuning.audio.master, pitch, k);
   }
 
   /** 사운드 비교용: 임의의 Voice를 게임과 같은 경로(잔향·리미터 포함)로 재생 */
   playVoice(voice: Voice, vol: number, k: number, master = tuning.audio.master): void {
     const ctx = this.ctx;
     if (!ctx || !this.out || ctx.state !== 'running') return;
-    this.playVoiceOn(ctx, voice, vol * this.volume * master, 1, k);
+    this.wetOut!.gain.value = tuning.audio.reverb;
+    this.playVoiceOn(ctx, this.out, this.reverb, voice, vol * this.volume * master, 1, k);
   }
 
-  private playVoiceOn(ctx: AudioContext, voice: Voice, v: number, pitch: number, k: number): void {
+  /** 검증용: Voice 하나를 게임과 같은 체인(잔향·리미터 포함)으로 오프라인 렌더링. 피치 흔들림 없음 */
+  async renderVoice(voice: Voice, vol: number, k: number, master: number, limiter: 'peak' | 'soft', seconds = 0.6): Promise<Float32Array> {
+    // 브라우저 컴프레서는 만들어진 직후 수백 ms 동안 출력이 작게 나와서(게임에선 이미 돌고 있어 해당 없음) 0.5초 뒤에 재생하고 잘라낸다
+    const lead = 0.5;
+    const off = new OfflineAudioContext(1, Math.floor(44100 * (seconds + lead)), 44100);
+    const ctx = off as unknown as AudioContext;
+    const out = off.createGain();
+    const comp = off.createDynamicsCompressor();
+    Sfx.limiterParams(comp, limiter);
+    out.connect(comp).connect(off.destination);
+    const rev = off.createConvolver();
+    rev.buffer = makeImpulse(ctx, tuning.audio.reverbSeconds);
+    const wet = off.createGain();
+    wet.gain.value = tuning.audio.reverb;
+    rev.connect(wet).connect(out);
+    this.playVoiceOn(ctx, out, rev, voice, vol * master, 1, k, 0, lead);
+    return (await off.startRendering()).getChannelData(0).slice(Math.floor(44100 * (lead - 0.01)));
+  }
+
+  private playVoiceOn(
+    ctx: AudioContext,
+    out: AudioNode,
+    reverb: AudioNode | null,
+    voice: Voice,
+    v: number,
+    pitch: number,
+    k: number,
+    jitter = tuning.audio.pitchJitter,
+    at = ctx.currentTime,
+  ): void {
     if (v <= 0.001) return;
-    const j = tuning.audio.pitchJitter;
-    const p = pitch * (1 + (Math.random() * 2 - 1) * j); // FX 장식이라 Math.random 허용
-    const t = ctx.currentTime;
+    const p = pitch * (1 + (Math.random() * 2 - 1) * jitter); // FX 장식이라 Math.random 허용
+    const t = at;
 
     const node = ctx.createGain();
-    node.connect(this.out!);
-    if (voice.wet > 0 && this.reverb) {
+    node.connect(out);
+    if (voice.wet > 0 && reverb) {
       const send = ctx.createGain();
       send.gain.value = voice.wet;
-      node.connect(send).connect(this.reverb);
+      node.connect(send).connect(reverb);
     }
-    this.wetOut!.gain.value = tuning.audio.reverb;
 
     const key = voice.buf ?? '';
     const bufs = this.buffers.get(key);

@@ -208,6 +208,15 @@ const VARIANTS: Variant[] = [
       return { buf: 'bounce_floor', file: 0.65, eq, wet: 0.15, layer: SYNTH.rubber_floor, layerVol: 0.55 };
     },
   },
+  {
+    id: '7',
+    label: '⑦ 새 후보: 실제 경기 매칭',
+    desc: "첨부 영상(real_rally) 분석값으로 만든 합성음: 음정 없는 넓은 대역 '탁' + 경기장 잔향 크게",
+    limiter: 'peak',
+    master: 1,
+    floorFull: 7.5,
+    voice: (s) => ({ file: 0, wet: 4, fallback: SYNTH[s === 'racket' ? 'match_hit' : s === 'wall' ? 'match_wall' : 'match_floor'] }),
+  },
 ];
 
 // 실제 랠리 수치로 본 세기 단계: 라켓 = 타구 빠르기, 벽·바닥 = 면에 수직으로 부딪히는 속력(m/s)
@@ -215,18 +224,35 @@ const RACKET_PACE = [0.2, 0.6, 1];
 const WALL_SPEED = [5, 13, 20];
 const FLOOR_SPEED = [2, 4.5, 7];
 
-function play(v: Variant, s: Surface, lv: Level): void {
-  sfx.setLimiter(v.limiter);
+/** 게임에서 이 상황이 낼 볼륨과 세기 k */
+function spec(v: Variant, s: Surface, lv: Level): { voice: Voice; vol: number; k: number } {
   const voice = v.voice(s, lv);
   if (s === 'racket') {
     const pace = RACKET_PACE[lv];
-    sfx.playVoice(voice, 0.55 + 0.45 * pace, pace, v.master);
-    return;
+    return { voice, vol: 0.55 + 0.45 * pace, k: pace };
   }
   const speed = s === 'wall' ? WALL_SPEED[lv] : FLOOR_SPEED[lv];
   const full = s === 'wall' ? tuning.audio.impactFullSpeed.front : v.floorFull;
-  sfx.playVoice(voice, sfx.speedVol(speed), Math.min(1, speed / full), v.master);
+  return { voice, vol: sfx.speedVol(speed), k: Math.min(1, speed / full) };
 }
+
+function play(v: Variant, s: Surface, lv: Level): void {
+  sfx.setLimiter(v.limiter);
+  const { voice, vol, k } = spec(v, s, lv);
+  sfx.playVoice(voice, vol, k, v.master);
+}
+
+/** 검증용 (e2e): 버전·면·세기별 오프라인 렌더 */
+Object.assign(window as object, {
+  __sfxlab: {
+    ids: () => VARIANTS.map((v) => v.id),
+    render: (id: string, s: Surface, lv: Level) => {
+      const v = VARIANTS.find((x) => x.id === id)!;
+      const { voice, vol, k } = spec(v, s, lv);
+      return sfx.renderVoice(voice, vol, k, v.master, v.limiter);
+    },
+  },
+});
 
 let rallyTimers: number[] = [];
 function rally(v: Variant): void {
