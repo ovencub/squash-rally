@@ -86,6 +86,64 @@ function applyEq(ctx: BaseAudioContext, eq: Eq[] | undefined, tail: AudioNode): 
   return next;
 }
 
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let silentEl: HTMLAudioElement | null = null;
+
+/** 1초짜리 무음 WAV (data URI) */
+function silentWav(): string {
+  const sr = 8000;
+  const n = sr;
+  const buf = new ArrayBuffer(44 + n);
+  const v = new DataView(buf);
+  const w = (o: number, str: string) => [...str].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF');
+  v.setUint32(4, 36 + n, true);
+  w(8, 'WAVE');
+  w(12, 'fmt ');
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true);
+  v.setUint32(28, sr, true);
+  v.setUint16(32, 1, true);
+  v.setUint16(34, 8, true);
+  w(36, 'data');
+  v.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) v.setUint8(44 + i, 128); // 8비트 무음
+  let bin = '';
+  new Uint8Array(buf).forEach((b) => (bin += String.fromCharCode(b)));
+  return `data:audio/wav;base64,${btoa(bin)}`;
+}
+
+/**
+ * iOS는 무음(벨소리) 스위치가 켜져 있으면 웹 오디오(Web Audio)를 통째로 음소거한다.
+ * - iOS 17+: navigator.audioSession.type = 'playback' 이면 무음 스위치와 무관하게 재생
+ * - 그 이전: 사용자 탭 안에서 무음 <audio>를 반복 재생해 오디오 세션을 '재생' 모드로 바꿈
+ */
+function unmuteIosSilentSwitch(): void {
+  if (!IS_IOS) return;
+  const nav = navigator as Navigator & { audioSession?: { type: string } };
+  if (nav.audioSession) {
+    try {
+      nav.audioSession.type = 'playback';
+      return;
+    } catch {
+      /* 아래 방법으로 */
+    }
+  }
+  if (!silentEl) {
+    silentEl = document.createElement('audio');
+    silentEl.src = silentWav();
+    silentEl.loop = true;
+    silentEl.setAttribute('playsinline', '');
+    silentEl.setAttribute('x-webkit-airplay', 'deny');
+    silentEl.preload = 'auto';
+    silentEl.style.display = 'none';
+    document.body.appendChild(silentEl);
+  }
+  if (silentEl.paused) void silentEl.play().catch(() => {});
+}
+
 class Sfx {
   private ctx: AudioContext | null = null;
   private out: GainNode | null = null;
@@ -128,8 +186,21 @@ class Sfx {
       this.reverb.connect(this.wetOut).connect(this.out);
       void this.loadAll();
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {});
+    // iOS: 'suspended'뿐 아니라 앱 전환·전화 후 'interrupted' 상태도 있음 → running이 아니면 사용자 탭 안에서 다시 시작
+    if (this.ctx.state !== 'running') void this.ctx.resume().catch(() => {});
+    if (!this.primed) {
+      // iOS 잠금 해제 관례: 사용자 탭 안에서 무음 버퍼를 한 번 재생해야 이후 소리가 남
+      const b = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
+      const src = this.ctx.createBufferSource();
+      src.buffer = b;
+      src.connect(this.ctx.destination);
+      src.start(0);
+      this.primed = true;
+    }
+    unmuteIosSilentSwitch();
   }
+
+  private primed = false;
 
   private async loadAll(): Promise<void> {
     const ctx = this.ctx!;
@@ -160,7 +231,11 @@ class Sfx {
 
   private playUnsafe(name: SfxName, vol: number, pitch: number): void {
     const ctx = this.ctx;
-    if (!ctx || !this.out || ctx.state !== 'running') return;
+    if (!ctx || !this.out) return;
+    if (ctx.state !== 'running') {
+      void ctx.resume().catch(() => {});
+      return;
+    }
     const v = vol * this.volume * tuning.audio.master;
     if (v <= 0.001) return;
     const patch = BANK[name];
@@ -234,3 +309,13 @@ class Sfx {
 }
 
 export const sfx = new Sfx();
+
+// 모든 "진짜 사용자 입력"(탭이 끝날 때·클릭·키) 안에서 오디오를 깨운다.
+// iOS 사파리는 pointerdown/touchstart 안에서는 오디오 시작을 허용하지 않으므로 touchend/click이 꼭 필요.
+for (const ev of ['touchend', 'click', 'keydown', 'pointerup'] as const) {
+  window.addEventListener(ev, () => sfx.unlock(), { capture: true, passive: true });
+}
+// 다른 앱에 갔다 돌아오면 다음 탭에서 다시 깨우도록 (iOS 'interrupted')
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') sfx.unlock();
+});
