@@ -58,8 +58,9 @@ export function createDebugPanel(hooks: DebugHooks): GUI {
   fx.close();
 
   const snd = gui.addFolder('사운드 (클릭해서 들어보기)');
-  snd.add(tuning.audio, 'reverb', 0, 1.5, 0.05).name('돔 잔향 크기');
-  snd.add(tuning.audio, 'reverbSeconds', 0.5, 5, 0.1).name('잔향 길이(s)').onFinishChange(() => sfx.rebuildReverb());
+  snd.add(tuning.audio, 'reverb', 0, 1.5, 0.05).name('잔향 크기');
+  snd.add(tuning.audio, 'courtReverbSeconds', 0.3, 4, 0.1).name('코트 잔향 길이(s)').onFinishChange(() => sfx.rebuildReverb());
+  snd.add(tuning.audio, 'reverbSeconds', 0.5, 5, 0.1).name('옛 돔 잔향 길이(s)').onFinishChange(() => sfx.rebuildReverb());
   snd.add(tuning.audio, 'pitchJitter', 0, 0.2, 0.01).name('피치 랜덤 ±');
   for (const n of sfx.names) snd.add({ [n]: () => (sfx.unlock(), sfx.play(n)) }, n);
   snd.close();

@@ -4,7 +4,7 @@
 
 ## 파일 음원
 
-| 사용 파일명 (`public/sfx/`, .ogg + .m4a) | 원본 이름 | 출처 URL | 작성자 | 라이선스 |
+| 사용 파일명 (`public/sfx/`, .ogg + .m4a — `hit_*`·`bounce_*`는 이제 사운드 비교 페이지의 예전 버전에서만 재생) | 원본 이름 | 출처 URL | 작성자 | 라이선스 |
 |---|---|---|---|---|
 | `hit_soft_0` | impact-sounds/Audio/impactPunch_heavy_000.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
 | `hit_soft_1` | impact-sounds/Audio/impactPunch_heavy_001.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
@@ -54,12 +54,15 @@
 
 | 소리 | 구현 | 비고 |
 |---|---|---|
+| **공 소리 전부 (라켓·앞벽·옆벽·유리·바닥, 게임 기본)** | `match_hit`, `match_wall`, `match_glass`, `match_floor` (`crack()`) | 실제 경기 영상 분석값 기반 합성음(핑크 노이즈 '탁', 세기별 밝기·크기). 파일 음원 없음 |
+| 스쿼시 코트 잔향 (게임 기본) | `makeCourtImpulse` | 확산형 합성 임펄스, 꼬리를 어둡게 |
+| (아래 고무공·팝 레이어는 사운드 비교 페이지의 예전 버전용) | | |
 | 라켓 타격 고무공 레이어 (`hit_*`의 주 소리) | `src/audio/synth.ts` `rubber_hit`, `rubber_hit_perfect` | 고무공 피드백: 낮은 '쿵' + 속 빈 고무공 공진(피치 하강) + 중음 '퍽'. 스펙트럼 중심 약 600Hz, 2.5kHz 이상 2% 미만 |
 | 벽·바닥·유리 고무공 레이어 | `rubber_wall`, `rubber_floor`, `rubber_glass` | 같은 원리, 표면별로 더 낮고 짧게 |
 | 세기별 '팡' (라켓·벽·바닥·유리 공통) | `pop()` + `snap()` | 테니스공 타구 같은 큰 터짐: 공진 노이즈 '팝'(약 1~1.4kHz) + 짧은 크랙. 타구·충돌 속력(k)에 따라 크기·밝기 증가 |
 | 신발 스퀵 | `squeak` | **임시 합성음** (적합한 무료 음원 미확보) |
 | 득점/실점/게임/매치 징글, 콤보 | `point_*`, `game_win`, `match_*`, `combo_up` | **임시 합성음** |
-| 돔 체육관 잔향 | `makeImpulse` | 합성 임펄스 응답 (초기 반사 + 2.8초 꼬리) |
+| 돔 체육관 잔향 (예전, 비교용) | `makeImpulse` | 합성 임펄스 응답 (초기 반사 + 2.8초 꼬리) |
 
 ## 분석에만 사용한 참고 자료 (게임에 포함하지 않음)
 

@@ -1,6 +1,6 @@
 // 사운드 비교 페이지 (?sfxlab): 예전·현재·새 후보 타구음을 같은 기기·같은 재생 경로(잔향·리미터 포함)로 들어보고 고르기 위한 도구.
 // 예전 버전은 그 시점 커밋의 합성 레이어·뱅크 값·리미터를 그대로 옮겨 둔 스냅샷이다 (게임에서는 쓰지 않음).
-import { sfx, type Eq, type SfxName, type Voice } from '../audio/sfx';
+import { sfx, type Eq, type Room, type SfxName, type Voice } from '../audio/sfx';
 import { hp, mode, modeDrop, noiseBurst, snap, SYNTH, thud, type Synth } from '../audio/synth';
 import { tuning } from '../config/tuning';
 
@@ -13,6 +13,8 @@ interface Variant {
   desc: string;
   limiter: 'peak' | 'soft';
   master: number;
+  /** 잔향 종류 (①~⑦은 당시의 돔 잔향 그대로) */
+  room: Room;
   /** 바닥 '최대 세기' 기준 속력 (예전 버전은 모든 면 22m/s) */
   floorFull: number;
   voice: (s: Surface, lv: Level) => Voice;
@@ -142,6 +144,7 @@ const VARIANTS: Variant[] = [
     desc: '녹음 없이 합성만. 잔향 없음',
     limiter: 'soft',
     master: 0.8,
+    room: 'hall',
     floorFull: 22,
     voice: (s, lv) => ({ file: 0, wet: 0, fallback: SYNTH[s === 'racket' ? HIT[lv] : s === 'wall' ? 'bounce_front' : 'bounce_floor'] }),
   },
@@ -151,6 +154,7 @@ const VARIANTS: Variant[] = [
     desc: '"가볍고 날카롭다"고 하셨던 소리',
     limiter: 'soft',
     master: 0.8,
+    room: 'hall',
     floorFull: 22,
     voice: (s, lv) => {
       if (s === 'racket')
@@ -169,6 +173,7 @@ const VARIANTS: Variant[] = [
     desc: '"둔탁해졌는데 경쾌함이 없다"고 하셨던 소리',
     limiter: 'soft',
     master: 0.8,
+    room: 'hall',
     floorFull: 22,
     voice: (s, lv) => rubberBank(s, lv, r1Hit, r1Perfect, r1Wall, r1Floor),
   },
@@ -178,17 +183,28 @@ const VARIANTS: Variant[] = [
     desc: '세기별 짧은 스냅 추가 (두 번 전 배포)',
     limiter: 'soft',
     master: 0.8,
+    room: 'hall',
     floorFull: 22,
     voice: (s, lv) => rubberBank(s, lv, r2Hit, r2Perfect, r2Wall, r2Floor),
   },
   {
     id: '5',
-    label: '⑤ 현재 게임 소리',
-    desc: '지금 배포된 그대로',
+    label: '⑤ 고무공 + 팝 (⑦ 이전 게임 소리)',
+    desc: '⑦을 고르시기 전까지 게임에 들어가 있던 소리',
     limiter: 'peak',
     master: 1,
+    room: 'hall',
     floorFull: 7.5,
-    voice: (s, lv) => sfx.bankVoice(s === 'racket' ? HIT[lv] : s === 'wall' ? 'bounce_front' : 'bounce_floor'),
+    voice: (s, lv) => {
+      if (s === 'racket')
+        return [
+          { buf: 'hit_soft', file: 0.12, layer: SYNTH.rubber_hit, layerVol: 0.9, wet: 0.24, rate: 1.06, eq: DULL_EQ },
+          { buf: 'hit_hard', file: 0.14, layer: SYNTH.rubber_hit, layerVol: 1.0, wet: 0.28, eq: DULL_EQ },
+          { buf: 'hit_perfect', file: 0.16, layer: SYNTH.rubber_hit_perfect, layerVol: 0.95, wet: 0.32, rate: 0.96, eq: DULL_EQ },
+        ][lv];
+      if (s === 'wall') return { buf: 'bounce_front', file: 0.14, layer: SYNTH.rubber_wall, layerVol: 1.0, wet: 0.32, eq: DULL_EQ };
+      return { buf: 'bounce_floor', file: 0.3, layer: SYNTH.rubber_floor, layerVol: 0.95, wet: 0.25, eq: DULL_EQ };
+    },
   },
   {
     id: '6',
@@ -196,6 +212,7 @@ const VARIANTS: Variant[] = [
     desc: '현재 합성 + 고무공 녹음을 거의 그대로 크게 (고음 컷 약하게, 잔향 적게)',
     limiter: 'peak',
     master: 1,
+    room: 'hall',
     floorFull: 7.5,
     voice: (s, lv) => {
       const eq: Eq[] = [
@@ -210,12 +227,23 @@ const VARIANTS: Variant[] = [
   },
   {
     id: '7',
-    label: '⑦ 새 후보: 실제 경기 매칭',
+    label: '⑦ 실제 경기 매칭 (예전 돔 잔향)',
     desc: "첨부 영상(real_rally) 분석값으로 만든 합성음: 음정 없는 넓은 대역 '탁' + 경기장 잔향 크게",
     limiter: 'peak',
     master: 1,
+    room: 'hall',
     floorFull: 7.5,
     voice: (s) => ({ file: 0, wet: 4, fallback: SYNTH[s === 'racket' ? 'match_hit' : s === 'wall' ? 'match_wall' : 'match_floor'] }),
+  },
+  {
+    id: '8',
+    label: '⑧ ⑦ + 코트 잔향 — 현재 게임 소리',
+    desc: '⑦의 금속성 울림 원인(단발 반사 반복)을 없앤 확산형 코트 잔향, 꼬리는 실제 경기처럼 어둡게',
+    limiter: 'peak',
+    master: 1,
+    room: 'court',
+    floorFull: 7.5,
+    voice: (s, lv) => sfx.bankVoice(s === 'racket' ? HIT[lv] : s === 'wall' ? 'bounce_front' : 'bounce_floor'),
   },
 ];
 
@@ -226,7 +254,7 @@ const FLOOR_SPEED = [2, 4.5, 7];
 
 /** 게임에서 이 상황이 낼 볼륨과 세기 k */
 function spec(v: Variant, s: Surface, lv: Level): { voice: Voice; vol: number; k: number } {
-  const voice = v.voice(s, lv);
+  const voice = { room: v.room, ...v.voice(s, lv) };
   if (s === 'racket') {
     const pace = RACKET_PACE[lv];
     return { voice, vol: 0.55 + 0.45 * pace, k: pace };

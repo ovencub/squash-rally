@@ -1,3 +1,4 @@
+import { Rng } from '../core/rng';
 // 임시 합성음 (WebAudio). M5에서 무료 음원으로 교체하고, 못 구한 소리는 이걸로 남긴다.
 // 모든 함수: (ctx, 출력 노드, 시작 시각, 볼륨, 피치 배율)
 
@@ -8,6 +9,8 @@ export type Synth = (ctx: AudioContext, out: AudioNode, t: number, vol: number, 
  * 큰 돔 체육관 잔향 임펄스 (M5 피드백): 초기 반사 몇 개 + 긴 확산 꼬리(RT60 ≈ seconds).
  * 고음은 빨리, 저음은 오래 남도록 시간에 따라 저역통과를 점점 강하게 건다. 좌우 채널은 서로 다른 난수.
  */
+// ⚠ 이 함수의 난수는 주기가 10,466샘플(0.24초)뿐인 잘못된 생성기라 꼬리가 0.24초마다 반복돼 쇳소리처럼 운다.
+// 사운드 비교 페이지(?sfxlab)의 옛 버전을 당시 소리 그대로 들려주려고 일부러 고치지 않았다. 게임은 makeCourtImpulse를 쓴다.
 export function makeImpulse(ctx: AudioContext, seconds = 2.8, preDelay = 0.03): AudioBuffer {
   const sr = ctx.sampleRate;
   const len = Math.floor(sr * (seconds + preDelay));
@@ -39,6 +42,39 @@ export function makeImpulse(ctx: AudioContext, seconds = 2.8, preDelay = 0.03): 
     for (const [t, a] of early) {
       const i = Math.floor((t + (ch ? 0.004 : 0)) * sr);
       if (i < len) d[i] += a * (ch ? 0.9 : 1);
+    }
+  }
+  return buf;
+}
+
+/**
+ * 스쿼시 코트 잔향 (사운드 비교 ⑦ 피드백: '울림이 금속성'):
+ * 예전 돔 잔향은 초기 반사를 단발 '딸깍' 몇 개로 넣어, 타격음 복사본이 일정 간격으로 반복되며 빗살(콤) 필터처럼 쇳소리가 났다.
+ * → 초기 반사를 촘촘한 확산 노이즈 덩어리로 바꾸고(단발 반사 없음), 꼬리는 실제 경기처럼 어둡게(고음 -16dB 수준).
+ * 2단 저역통과로 고음을 부드럽게 깎고, 시간이 갈수록 더 어두워진다.
+ */
+export function makeCourtImpulse(ctx: AudioContext, seconds = 1.8, preDelay = 0.006): AudioBuffer {
+  const sr = ctx.sampleRate;
+  const len = Math.floor(sr * (seconds + preDelay));
+  const buf = ctx.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    const rng = new Rng(991 + ch * 57);
+    let lp1 = 0;
+    let lp2 = 0;
+    let lo = 0;
+    const p0 = Math.floor(preDelay * sr);
+    for (let i = p0; i < len; i++) {
+      const t = (i - p0) / sr;
+      const n = rng.next() * 2 - 1;
+      // 감쇠(RT60 = seconds) + 처음 수십 ms는 벽 4면·바닥 반사가 몰려 조금 더 큼 (단발이 아니라 확산)
+      const amp = Math.exp((-6.9 * t) / seconds) * (1 + 0.6 * Math.exp(-t / 0.03)) * Math.min(1, t / 0.003);
+      const k = 0.3 - 0.2 * Math.min(1, t / seconds);
+      lp1 += k * (n - lp1);
+      lp2 += k * (lp1 - lp2);
+      // 250Hz 아래 웅웅거림은 덜어냄 (실제 경기 잔향은 저음이 부풀지 않음)
+      lo += 0.035 * (lp2 - lo);
+      d[i] = (lp2 - lo) * amp;
     }
   }
   return buf;
@@ -170,11 +206,10 @@ function pinkNoise(ctx: AudioContext): AudioBuffer {
   const len = ctx.sampleRate * 0.5;
   pinkBuf = ctx.createBuffer(1, len, ctx.sampleRate);
   const d = pinkBuf.getChannelData(0);
-  let seed = 4242;
+  const rng = new Rng(4242);
   let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
   for (let i = 0; i < len; i++) {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    const w = (seed / 0x7fffffff) * 2 - 1;
+    const w = rng.next() * 2 - 1;
     // Paul Kellet 필터
     b0 = 0.99886 * b0 + w * 0.0555179;
     b1 = 0.99332 * b1 + w * 0.0750759;
@@ -193,11 +228,9 @@ function noise(ctx: AudioContext): AudioBuffer {
   const len = ctx.sampleRate * 0.5;
   noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
-  let seed = 12345;
-  for (let i = 0; i < len; i++) {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    d[i] = (seed / 0x7fffffff) * 2 - 1;
-  }
+  // (예전 난수 생성기는 JS 실수 정밀도 때문에 주기가 0.24초뿐이라 노이즈가 반복돼 쇳소리가 났음 → mulberry32)
+  const rng = new Rng(12345);
+  for (let i = 0; i < len; i++) d[i] = rng.next() * 2 - 1;
   return noiseBuf;
 }
 
@@ -302,6 +335,7 @@ export const SYNTH: Record<string, Synth> = {
   // ── 실제 경기 매칭 레이어 (사운드 비교 ⑦) ──
   match_hit: (c, o, t, v, p, k) => crack(c, o, t, v * 2.2 * (0.35 + 0.65 * k), k, 1500 * p, 2500 * p, 170, 0.18),
   match_wall: (c, o, t, v, p, k) => crack(c, o, t, v * 2.2 * (0.3 + 0.7 * k), k, 1400 * p, 2300 * p, 150, 0.2),
+  match_glass: (c, o, t, v, p, k) => crack(c, o, t, v * 1.8 * (0.3 + 0.7 * k), k, 1200 * p, 2000 * p, 160, 0.16),
   match_floor: (c, o, t, v, p, k) => crack(c, o, t, v * 2.0 * (0.3 + 0.7 * k), k, 1100 * p, 2000 * p, 140, 0.14),
   hit_soft: (c, o, t, v, p) => {
     hp(c, o, t, v * 0.7, 4200 * p, 0.018);

@@ -1,5 +1,5 @@
 import { tuning } from '../config/tuning';
-import { makeImpulse, SYNTH, type Synth } from './synth';
+import { makeCourtImpulse, makeImpulse, SYNTH, type Synth } from './synth';
 
 export type SfxName =
   | 'ui_hover'
@@ -38,21 +38,17 @@ interface Patch {
   /** 파일 음원에 거는 EQ (실제 경기음 스펙트럼에 맞춤) */
   eq?: Eq[];
 }
-// 라켓 타격: 실제 타격음은 380Hz 대역이 가장 크고 60~150Hz는 -5dB, 2kHz 위는 빠르게 감소
-// 고무공 피드백: 2.5kHz 위 날카로운 성분은 깎고, 아주 낮은 웅웅거림만 정리 (몸통 100~400Hz는 살림)
-const DULL_EQ: Eq[] = [
-  ['highpass', 450, 0, 0.7], // 원본의 웅웅거리는 저음 제거 (몸통은 합성 레이어가 담당)
-  ['lowpass', 2400, 0, 0.7],
-  ['highshelf', 1600, -3],
-];
+/** 공 소리의 코트 잔향 센드 (실제 경기처럼 잔향이 큼) */
+const COURT_WET = 3.5;
 const BANK: Record<SfxName, Patch> = {
-  hit_soft: { file: 0.12, layer: ['rubber_hit', 0.9], wet: 0.24, rate: 1.06, eq: DULL_EQ },
-  hit_hard: { file: 0.14, layer: ['rubber_hit', 1.0], wet: 0.28, rate: 1.0, eq: DULL_EQ },
-  hit_perfect: { file: 0.16, layer: ['rubber_hit_perfect', 0.95], wet: 0.32, rate: 0.96, eq: DULL_EQ },
-  bounce_front: { file: 0.14, layer: ['rubber_wall', 1.0], wet: 0.32, rate: 1.0, eq: DULL_EQ },
-  bounce_side: { file: 0.11, layer: ['rubber_wall', 0.75], wet: 0.3, rate: 1.05, eq: DULL_EQ },
-  bounce_glass: { file: 0.05, layer: ['rubber_glass', 0.8], wet: 0.3, eq: DULL_EQ },
-  bounce_floor: { file: 0.3, layer: ['rubber_floor', 0.95], wet: 0.25, rate: 1.0, eq: DULL_EQ },
+  // 공 소리: 실제 경기 영상(real_rally) 분석 기반 합성음만 사용 (사운드 비교 ⑧, 사용자 선택). file 0 = 합성 레이어만
+  hit_soft: { file: 0, layer: ['match_hit', 1], wet: COURT_WET },
+  hit_hard: { file: 0, layer: ['match_hit', 1], wet: COURT_WET },
+  hit_perfect: { file: 0, layer: ['match_hit', 1.05], wet: COURT_WET },
+  bounce_front: { file: 0, layer: ['match_wall', 1], wet: COURT_WET },
+  bounce_side: { file: 0, layer: ['match_wall', 0.8], wet: COURT_WET },
+  bounce_glass: { file: 0, layer: ['match_glass', 0.8], wet: COURT_WET },
+  bounce_floor: { file: 0, layer: ['match_floor', 1], wet: COURT_WET },
   tin: { file: 1, layer: ['tin', 0.5], wet: 0.55 },
   squeak: { file: 0, wet: 0.4 },
   step: { file: 0.35, wet: 0.22 },
@@ -74,7 +70,10 @@ const BANK: Record<SfxName, Patch> = {
  * buf: 파일 음원 키, layer: 겹칠 합성음, fallback: 파일이 없을 때 대신 낼 합성음
  * eqBug: M5 시절 EQ 연결 버그 재현(EQ 첫 단만 거친 원음이 볼륨 무시하고 그대로 나감) — 비교용
  */
+/** 잔향 종류: court = 스쿼시 코트(기본), hall = 예전 돔 잔향(단발 초기 반사 → 쇳소리, 비교용) */
+export type Room = 'court' | 'hall';
 export interface Voice {
+  room?: Room;
   buf?: string;
   file: number;
   eq?: Eq[];
@@ -162,7 +161,7 @@ function unmuteIosSilentSwitch(): void {
 class Sfx {
   private ctx: AudioContext | null = null;
   private out: GainNode | null = null;
-  private reverb: ConvolverNode | null = null;
+  private rooms: Partial<Record<Room, ConvolverNode>> = {};
   private wetOut: GainNode | null = null;
   private buffers = new Map<string, AudioBuffer[]>();
   private lastVariant = new Map<string, number>();
@@ -195,10 +194,9 @@ class Sfx {
       this.comp = this.ctx.createDynamicsCompressor();
       this.setLimiter('peak');
       this.out.connect(this.comp).connect(this.ctx.destination);
-      this.reverb = this.ctx.createConvolver();
-      this.reverb.buffer = makeImpulse(this.ctx, tuning.audio.reverbSeconds);
       this.wetOut = this.ctx.createGain();
-      this.reverb.connect(this.wetOut).connect(this.out);
+      this.wetOut.connect(this.out);
+      this.rooms = Sfx.makeRooms(this.ctx, this.wetOut);
       void this.loadAll();
     }
     // iOS: 'suspended'뿐 아니라 앱 전환·전화 후 'interrupted' 상태도 있음 → running이 아니면 사용자 탭 안에서 다시 시작
@@ -216,6 +214,16 @@ class Sfx {
   }
 
   private primed = false;
+
+  private static makeRooms(ctx: AudioContext, wetOut: AudioNode): Record<Room, ConvolverNode> {
+    const hall = ctx.createConvolver();
+    hall.buffer = makeImpulse(ctx, tuning.audio.reverbSeconds);
+    const court = ctx.createConvolver();
+    court.buffer = makeCourtImpulse(ctx, tuning.audio.courtReverbSeconds);
+    hall.connect(wetOut);
+    court.connect(wetOut);
+    return { hall, court };
+  }
   private comp: DynamicsCompressorNode | null = null;
 
   /** 마스터 리미터. 'soft' = 예전 설정(-10dB, 6:1, knee 30 → 큰 소리를 많이 누름), 사운드 비교용 */
@@ -252,6 +260,11 @@ class Sfx {
   /** BANK의 한 줄 = 게임에서 실제로 나는 방법 */
   bankVoice(name: SfxName): Voice {
     const b = BANK[name];
+    // 파일 없이 합성 레이어만 쓰는 소리는 그 레이어가 곧 소리
+    if (b.file === 0 && b.layer) {
+      const [layer, lv] = b.layer;
+      return { file: 0, wet: b.wet, fallback: (c, o, t, v, p, k) => SYNTH[layer]?.(c, o, t, v * lv, p, k) };
+    }
     return {
       buf: name,
       file: b.file,
@@ -300,7 +313,7 @@ class Sfx {
       return;
     }
     this.wetOut!.gain.value = tuning.audio.reverb;
-    this.playVoiceOn(ctx, this.out, this.reverb, this.bankVoice(name), vol * this.volume * tuning.audio.master, pitch, k);
+    this.playVoiceOn(ctx, this.out, this.rooms, this.bankVoice(name), vol * this.volume * tuning.audio.master, pitch, k);
   }
 
   /** 사운드 비교용: 임의의 Voice를 게임과 같은 경로(잔향·리미터 포함)로 재생 */
@@ -308,7 +321,7 @@ class Sfx {
     const ctx = this.ctx;
     if (!ctx || !this.out || ctx.state !== 'running') return;
     this.wetOut!.gain.value = tuning.audio.reverb;
-    this.playVoiceOn(ctx, this.out, this.reverb, voice, vol * this.volume * master, 1, k);
+    this.playVoiceOn(ctx, this.out, this.rooms, voice, vol * this.volume * master, 1, k);
   }
 
   /** 검증용: Voice 하나를 게임과 같은 체인(잔향·리미터 포함)으로 오프라인 렌더링. 피치 흔들림 없음 */
@@ -321,19 +334,17 @@ class Sfx {
     const comp = off.createDynamicsCompressor();
     Sfx.limiterParams(comp, limiter);
     out.connect(comp).connect(off.destination);
-    const rev = off.createConvolver();
-    rev.buffer = makeImpulse(ctx, tuning.audio.reverbSeconds);
     const wet = off.createGain();
     wet.gain.value = tuning.audio.reverb;
-    rev.connect(wet).connect(out);
-    this.playVoiceOn(ctx, out, rev, voice, vol * master, 1, k, 0, lead);
+    wet.connect(out);
+    this.playVoiceOn(ctx, out, Sfx.makeRooms(ctx, wet), voice, vol * master, 1, k, 0, lead);
     return (await off.startRendering()).getChannelData(0).slice(Math.floor(44100 * (lead - 0.01)));
   }
 
   private playVoiceOn(
     ctx: AudioContext,
     out: AudioNode,
-    reverb: AudioNode | null,
+    rooms: Partial<Record<Room, AudioNode>>,
     voice: Voice,
     v: number,
     pitch: number,
@@ -347,6 +358,7 @@ class Sfx {
 
     const node = ctx.createGain();
     node.connect(out);
+    const reverb = rooms[voice.room ?? 'court'];
     if (voice.wet > 0 && reverb) {
       const send = ctx.createGain();
       send.gain.value = voice.wet;
@@ -393,7 +405,9 @@ class Sfx {
 
   /** 디버그: 잔향 길이 변경 */
   rebuildReverb(): void {
-    if (this.ctx && this.reverb) this.reverb.buffer = makeImpulse(this.ctx, tuning.audio.reverbSeconds);
+    if (!this.ctx) return;
+    if (this.rooms.hall) this.rooms.hall.buffer = makeImpulse(this.ctx, tuning.audio.reverbSeconds);
+    if (this.rooms.court) this.rooms.court.buffer = makeCourtImpulse(this.ctx, tuning.audio.courtReverbSeconds);
   }
 
   readonly names = Object.keys(BANK) as SfxName[];

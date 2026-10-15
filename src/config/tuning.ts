@@ -179,7 +179,9 @@ export const tuning = {
     squeakVol: 0.45, // 신발 스퀵 (공 소리보다 작게)
     // M5: 큰 돔 체육관 잔향
     reverb: 0.55, // 잔향 출력 크기 (0 = 없음)
-    reverbSeconds: 2.8, // 잔향 길이 (RT60)
+    reverbSeconds: 2.8, // 예전 돔 잔향 길이 (RT60) — 사운드 비교 페이지의 옛 버전용
+    // 스쿼시 코트 잔향 (게임 기본): 확산형, 금속성 반사 없음
+    courtReverbSeconds: 1.8,
     stepStride: 0.85, // 이 거리(m)마다 발소리
   },
 
