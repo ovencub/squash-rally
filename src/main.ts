@@ -668,6 +668,9 @@ if (roomParam) {
   history.replaceState(null, '', location.pathname);
   screens.title({ start: () => joinRoom(roomParam) });
 } else screens.title({ start: showMain });
+// 사운드 비교 페이지: ?sfxlab
+if (new URLSearchParams(location.search).has('sfxlab'))
+  void import('./debug/sfxlab').then((m) => m.openSfxLab(() => history.replaceState(null, '', location.pathname)));
 requestAnimationFrame(frame);
 // 첫 프레임이 그려지고 폰트가 준비되면 로딩 화면을 걷는다
 void document.fonts.ready.then(() =>

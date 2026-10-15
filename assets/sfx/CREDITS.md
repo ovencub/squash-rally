@@ -43,6 +43,13 @@
 가공 스크립트: `scripts/build_sfx.py` (원본은 `assets/sfx/_downloads/`, 공개 저장소 제외).
 가공: ffmpeg로 앞 무음 제거(-50dB), 최대 1.2초 + 40ms 페이드아웃, 모노 44.1kHz, 피크 -1dBFS 정규화, Ogg Vorbis(q5) + AAC 128k(사파리용).
 
+### 사운드 비교 페이지 전용 (`public/sfx/lab/`, `?sfxlab`에서만 재생)
+
+| 사용 파일명 | 원본 이름 | 출처 URL | 작성자 | 라이선스 |
+|---|---|---|---|---|
+| `lab/m5_hit_*`, `lab/m5_bounce_front_*` | impact-sounds/Audio/impactPlate_light_000~004.ogg (M5 첫 배포 때 쓰던 가공본) | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `lab/m5_bounce_floor_*` | impact-sounds/Audio/impactWood_light_000~002.ogg (M5 가공본) | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+
 ## 합성음 (코드로 생성, 라이선스 문제 없음)
 
 | 소리 | 구현 | 비고 |

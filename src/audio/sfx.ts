@@ -1,5 +1,5 @@
 import { tuning } from '../config/tuning';
-import { makeImpulse, SYNTH } from './synth';
+import { makeImpulse, SYNTH, type Synth } from './synth';
 
 export type SfxName =
   | 'ui_hover'
@@ -29,7 +29,7 @@ export type SfxName =
  * file: 파일 음원 볼륨(0이면 파일 없음), layer: 겹칠 합성음 이름과 볼륨, wet: 잔향 센드, rate: 재생 속도(피치)
  * 파일을 못 불러오면 같은 이름의 합성음으로 대체한다 (CREDITS의 "임시 합성음").
  */
-type Eq = [BiquadFilterType, number, number, number?]; // 종류, 주파수, 게인(dB), Q
+export type Eq = [BiquadFilterType, number, number, number?]; // 종류, 주파수, 게인(dB), Q
 interface Patch {
   file: number;
   layer?: [string, number];
@@ -68,6 +68,23 @@ const BANK: Record<SfxName, Patch> = {
   match_lose: { file: 0, wet: 0.3 },
   combo_up: { file: 0, wet: 0.2 },
 };
+
+/**
+ * 소리 한 번을 내는 방법 (BANK 한 줄을 풀어 쓴 것). 사운드 비교 페이지(?sfxlab)가 예전 버전을 같은 경로로 재생할 때도 쓴다.
+ * buf: 파일 음원 키, layer: 겹칠 합성음, fallback: 파일이 없을 때 대신 낼 합성음
+ * eqBug: M5 시절 EQ 연결 버그 재현(EQ 첫 단만 거친 원음이 볼륨 무시하고 그대로 나감) — 비교용
+ */
+export interface Voice {
+  buf?: string;
+  file: number;
+  eq?: Eq[];
+  rate?: number;
+  wet: number;
+  layer?: Synth;
+  layerVol?: number;
+  fallback?: Synth;
+  eqBug?: boolean;
+}
 
 /** EQ 체인을 만들어 첫 노드를 돌려준다 (src → eq... → tail) */
 function applyEq(ctx: BaseAudioContext, eq: Eq[] | undefined, tail: AudioNode): AudioNode {
@@ -175,13 +192,9 @@ class Sfx {
       this.out = this.ctx.createGain();
       // 마스터 리미터 (잔향과 겹쳐도 찢어지지 않게). 꼭대기만 잡는다:
       // 예전 설정(기본 knee 30dB)은 -25dB부터 눌러서 세게 친 '팡'이 약한 공과 비슷한 크기로 뭉개졌음
-      const comp = this.ctx.createDynamicsCompressor();
-      comp.threshold.value = -3;
-      comp.knee.value = 2;
-      comp.ratio.value = 20;
-      comp.attack.value = 0.001;
-      comp.release.value = 0.12;
-      this.out.connect(comp).connect(this.ctx.destination);
+      this.comp = this.ctx.createDynamicsCompressor();
+      this.setLimiter('peak');
+      this.out.connect(this.comp).connect(this.ctx.destination);
       this.reverb = this.ctx.createConvolver();
       this.reverb.buffer = makeImpulse(this.ctx, tuning.audio.reverbSeconds);
       this.wetOut = this.ctx.createGain();
@@ -203,6 +216,51 @@ class Sfx {
   }
 
   private primed = false;
+  private comp: DynamicsCompressorNode | null = null;
+
+  /** 마스터 리미터. 'soft' = 예전 설정(-10dB, 6:1, knee 30 → 큰 소리를 많이 누름), 사운드 비교용 */
+  setLimiter(mode: 'peak' | 'soft'): void {
+    const c = this.comp;
+    if (!c) return;
+    if (mode === 'peak') {
+      c.threshold.value = -3;
+      c.knee.value = 2;
+      c.ratio.value = 20;
+      c.attack.value = 0.001;
+      c.release.value = 0.12;
+    } else {
+      c.threshold.value = -10;
+      c.knee.value = 30;
+      c.ratio.value = 6;
+      c.attack.value = 0.003;
+      c.release.value = 0.25;
+    }
+  }
+
+  /** 추가 음원 불러오기 (사운드 비교용). files = public/sfx/ 기준 경로(확장자 없이) */
+  async loadExtra(key: string, files: string[]): Promise<void> {
+    const ctx = this.ctx;
+    if (!ctx || this.buffers.has(key)) return;
+    const base = `${import.meta.env.BASE_URL}sfx/`;
+    const ext = new Audio().canPlayType('audio/ogg; codecs="vorbis"') ? 'ogg' : 'm4a';
+    const bufs = await Promise.all(files.map(async (f) => ctx.decodeAudioData(await (await fetch(`${base}${f}.${ext}`)).arrayBuffer())));
+    this.buffers.set(key, bufs);
+  }
+
+  /** BANK의 한 줄 = 게임에서 실제로 나는 방법 */
+  bankVoice(name: SfxName): Voice {
+    const b = BANK[name];
+    return {
+      buf: name,
+      file: b.file,
+      eq: b.eq,
+      rate: b.rate,
+      wet: b.wet,
+      layer: b.layer ? SYNTH[b.layer[0]] : undefined,
+      layerVol: b.layer?.[1],
+      fallback: SYNTH[name],
+    };
+  }
 
   private async loadAll(): Promise<void> {
     const ctx = this.ctx!;
@@ -239,41 +297,61 @@ class Sfx {
       void ctx.resume().catch(() => {});
       return;
     }
-    const v = vol * this.volume * tuning.audio.master;
+    this.playVoiceOn(ctx, this.bankVoice(name), vol * this.volume * tuning.audio.master, pitch, k);
+  }
+
+  /** 사운드 비교용: 임의의 Voice를 게임과 같은 경로(잔향·리미터 포함)로 재생 */
+  playVoice(voice: Voice, vol: number, k: number, master = tuning.audio.master): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.out || ctx.state !== 'running') return;
+    this.playVoiceOn(ctx, voice, vol * this.volume * master, 1, k);
+  }
+
+  private playVoiceOn(ctx: AudioContext, voice: Voice, v: number, pitch: number, k: number): void {
     if (v <= 0.001) return;
-    const patch = BANK[name];
     const j = tuning.audio.pitchJitter;
     const p = pitch * (1 + (Math.random() * 2 - 1) * j); // FX 장식이라 Math.random 허용
     const t = ctx.currentTime;
 
     const node = ctx.createGain();
-    node.connect(this.out);
-    if (patch.wet > 0 && this.reverb) {
+    node.connect(this.out!);
+    if (voice.wet > 0 && this.reverb) {
       const send = ctx.createGain();
-      send.gain.value = patch.wet;
+      send.gain.value = voice.wet;
       node.connect(send).connect(this.reverb);
     }
     this.wetOut!.gain.value = tuning.audio.reverb;
 
-    const bufs = this.buffers.get(name);
-    if (patch.file > 0 && bufs?.length) {
+    const key = voice.buf ?? '';
+    const bufs = this.buffers.get(key);
+    if (voice.file > 0 && bufs?.length) {
       // 같은 변형이 연속으로 나오지 않게
       let i = Math.floor(Math.random() * bufs.length);
-      if (bufs.length > 1 && i === this.lastVariant.get(name)) i = (i + 1) % bufs.length;
-      this.lastVariant.set(name, i);
+      if (bufs.length > 1 && i === this.lastVariant.get(key)) i = (i + 1) % bufs.length;
+      this.lastVariant.set(key, i);
       const src = ctx.createBufferSource();
       src.buffer = bufs[i];
-      src.playbackRate.value = p * (patch.rate ?? 1);
+      src.playbackRate.value = p * (voice.rate ?? 1);
       const g = ctx.createGain();
-      g.gain.value = v * patch.file;
-      // 소스 → EQ 체인 → 볼륨(g) → 출력. (예전엔 EQ 첫 단을 출력에 바로 이어 볼륨·나머지 EQ가 빠지는 버그가 있었음)
-      src.connect(applyEq(ctx, patch.eq, g));
-      g.connect(node);
+      g.gain.value = v * voice.file;
+      if (voice.eqBug && voice.eq?.length) {
+        const first = ctx.createBiquadFilter();
+        const [type, f, gain, q] = voice.eq[0];
+        first.type = type;
+        first.frequency.value = f;
+        first.gain.value = gain;
+        if (q !== undefined) first.Q.value = q;
+        src.connect(first).connect(node);
+      } else {
+        // 소스 → EQ 체인 → 볼륨(g) → 출력. (예전엔 EQ 첫 단을 출력에 바로 이어 볼륨·나머지 EQ가 빠지는 버그가 있었음)
+        src.connect(applyEq(ctx, voice.eq, g));
+        g.connect(node);
+      }
       src.start(t);
-      if (patch.layer) SYNTH[patch.layer[0]]?.(ctx, node, t, v * patch.layer[1], p, k);
+      voice.layer?.(ctx, node, t, v * (voice.layerVol ?? 1), p, k);
     } else {
       // 파일이 없거나 아직 로딩 전: 합성음
-      SYNTH[name]?.(ctx, node, t, v, p, k);
+      voice.fallback?.(ctx, node, t, v, p, k);
     }
   }
 
@@ -311,6 +389,10 @@ class Sfx {
       if (patch.layer && parts === 'both') SYNTH[patch.layer[0]]?.(off as unknown as AudioContext, off.destination, t, patch.layer[1], 1, k);
     } else SYNTH[name]?.(off as unknown as AudioContext, off.destination, t, 1, 1, k);
     return (await off.startRendering()).getChannelData(0);
+  }
+
+  get running(): boolean {
+    return this.ctx?.state === 'running';
   }
 
   get loaded(): number {

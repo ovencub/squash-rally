@@ -2,7 +2,7 @@
 // 모든 함수: (ctx, 출력 노드, 시작 시각, 볼륨, 피치 배율)
 
 /** k = 세기 0..1 (타구 속력·충돌 속력). 세게 맞을수록 '팡' 스냅이 커지고 짧고 단단해진다 */
-type Synth = (ctx: AudioContext, out: AudioNode, t: number, vol: number, pitch: number, k: number) => void;
+export type Synth = (ctx: AudioContext, out: AudioNode, t: number, vol: number, pitch: number, k: number) => void;
 
 /**
  * 큰 돔 체육관 잔향 임펄스 (M5 피드백): 초기 반사 몇 개 + 긴 확산 꼬리(RT60 ≈ seconds).
@@ -49,7 +49,7 @@ export function makeImpulse(ctx: AudioContext, seconds = 2.8, preDelay = 0.03): 
  * 700Hz 아래는 걷어내(몸통은 다른 레이어 담당) 중고음 '팡'만 남기고, 5.5kHz 위는 깎아 쇳소리 없이.
  * dur = 음량이 -80dB까지 떨어지는 시간 (실제로 들리는 길이는 그 1/4 정도).
  */
-function snap(ctx: AudioContext, out: AudioNode, t: number, vol: number, center: number, dur: number) {
+export function snap(ctx: AudioContext, out: AudioNode, t: number, vol: number, center: number, dur: number) {
   const src = ctx.createBufferSource();
   src.buffer = noise(ctx);
   const hpf = ctx.createBiquadFilter();
@@ -72,7 +72,7 @@ function snap(ctx: AudioContext, out: AudioNode, t: number, vol: number, center:
  * 팝: 속 빈 고무공이 찌그러졌다 튀며 울리는 '팡' — 공진(Q 높은 대역) 노이즈라 '쉬익'이 아니라 음색 있는 터짐.
  * 테니스공 타구음의 몸통. 크게 들리도록 수십 ms 에너지를 가진다 (dur = -80dB까지 시간).
  */
-function pop(ctx: AudioContext, out: AudioNode, t: number, vol: number, center: number, q: number, dur: number) {
+export function pop(ctx: AudioContext, out: AudioNode, t: number, vol: number, center: number, q: number, dur: number) {
   const src = ctx.createBufferSource();
   src.buffer = noise(ctx);
   const hpf = ctx.createBiquadFilter();
@@ -94,7 +94,7 @@ function pop(ctx: AudioContext, out: AudioNode, t: number, vol: number, center: 
 const popAmt = (k: number) => 0.1 + 0.9 * Math.pow(Math.max(0, Math.min(1, k)), 1.5);
 
 /** 감쇠 사인 모드 + 피치 하강 (고무가 눌렸다 펴지며 음이 살짝 내려감) */
-function modeDrop(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0: number, f1: number, decay: number, attack = 0.002) {
+export function modeDrop(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0: number, f1: number, decay: number, attack = 0.002) {
   const o = ctx.createOscillator();
   o.frequency.setValueAtTime(f0, t);
   o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + decay * 2);
@@ -108,7 +108,7 @@ function modeDrop(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0:
 }
 
 /** 대역 노이즈 '퍽' (어택을 살짝 둥글게 → 날카로운 딸깍이 아니라 고무가 눌리는 소리) */
-function thud(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, q: number, decay: number, attack = 0.0025) {
+export function thud(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, q: number, decay: number, attack = 0.0025) {
   const src = ctx.createBufferSource();
   src.buffer = noise(ctx);
   const f = ctx.createBiquadFilter();
@@ -124,7 +124,7 @@ function thud(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: n
 }
 
 /** 감쇠 사인 모드 (모달 합성) */
-function mode(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, decay: number) {
+export function mode(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, decay: number) {
   const o = ctx.createOscillator();
   o.frequency.value = freq;
   const g = ctx.createGain();
@@ -159,7 +159,7 @@ function env(ctx: AudioContext, out: AudioNode, t: number, vol: number, attack: 
   return g;
 }
 
-function noiseBurst(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, q: number, decay: number) {
+export function noiseBurst(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, q: number, decay: number) {
   const src = ctx.createBufferSource();
   src.buffer = noise(ctx);
   const f = ctx.createBiquadFilter();
@@ -172,7 +172,7 @@ function noiseBurst(ctx: AudioContext, out: AudioNode, t: number, vol: number, f
 }
 
 /** 하이패스 노이즈 클릭 (밝은 트랜지언트) */
-function hp(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, decay: number) {
+export function hp(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, decay: number) {
   const src = ctx.createBufferSource();
   src.buffer = noise(ctx);
   const f = ctx.createBiquadFilter();
@@ -183,7 +183,7 @@ function hp(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: num
   src.stop(t + decay + 0.03);
 }
 
-function tone(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0: number, f1: number, decay: number, type: OscillatorType = 'sine') {
+export function tone(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0: number, f1: number, decay: number, type: OscillatorType = 'sine') {
   const o = ctx.createOscillator();
   o.type = type;
   o.frequency.setValueAtTime(f0, t);
