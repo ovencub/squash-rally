@@ -631,9 +631,9 @@ export class Game {
     const cu = tuning.debug.closeup;
     if (cu !== 'off') {
       const cam = this.rig.camera;
-      const o = { side: [3.2, 1.3, 0], back: [0, 1.6, 3.2], front: [0, 1.4, -3.2] }[cu];
+      const o = { side: [3.2, 1.3, 0], back: [0, 1.6, 3.2], front: [0, 1.4, -3.2], racket: [1.1, 1.7, 0.2] }[cu];
       cam.position.set(this.A.mover.x + o[0], o[1], this.A.mover.z + o[2]);
-      cam.lookAt(this.A.mover.x, 0.95, this.A.mover.z);
+      cam.lookAt(this.A.mover.x + (cu === 'racket' ? 0.45 : 0), cu === 'racket' ? 1.65 : 0.95, this.A.mover.z);
     }
   }
 

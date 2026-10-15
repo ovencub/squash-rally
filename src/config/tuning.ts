@@ -172,7 +172,7 @@ export const tuning = {
     timeScale: 1, // 슬로모 (1 = 정상)
     autoplay: false, // 자동 플레이(봇): 타점으로 이동해 이상적인 순간에 맞는 손으로 클릭
     autoplayErrorMs: 0, // 봇 스윙 타이밍 오차 (판정 확인용)
-    closeup: 'off' as 'off' | 'side' | 'back' | 'front', // 캐릭터 동작 확인용 근접 카메라
+    closeup: 'off' as 'off' | 'side' | 'back' | 'front' | 'racket', // 캐릭터 동작 확인용 근접 카메라
     // 공 발사기: 캐릭터 위치에서 앞벽(-z) 방향으로 발사
     launcher: { y: 0.9, speed: 18, elevationDeg: 12, aimDeg: 0, serve: false },
   },

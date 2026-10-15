@@ -123,27 +123,33 @@ function makeArm(spine: THREE.Group, x: number, accent: number | null, shirt: nu
 }
 
 // ── 라켓 (실제 규격 기준) ──
-// 전장 686mm(WSF 최대), 헤드 약 215 x 185mm 물방울형(오픈 스로트), 프레임 두께 약 12mm, 그립 약 260mm.
+// 전장 686mm(WSF 최대). 실제 라켓 사진 기준: 긴 물방울형 헤드가 전체 길이의 절반 가까이 차지하고(약 360 x 190mm),
+// 스트링 면이 목(스로트) 쪽까지 길게 내려오며, 그립 위 샤프트는 짧다. 프레임 두께 약 12mm, 그립 약 260mm.
 // 로컬 좌표: 손(그립 끝 근처)이 원점, 라켓은 -y 방향으로 뻗고 면의 법선은 +x.
-export const RACKET = { gripTop: 0.04, gripLen: 0.26, throatY: -0.36, headTop: -0.6, headHalfW: 0.0925 };
+export const RACKET = { gripTop: 0.04, gripLen: 0.26, throatY: -0.29, headTop: -0.646, headHalfW: 0.095 };
 /** 손 → 헤드 중심 거리 (IK에서 아래팔 연장 길이로 씀) */
-export const HAND_TO_HEAD = 0.5;
+export const HAND_TO_HEAD = 0.52; // 스윗스팟 (스트링 면 위쪽 중앙)
 
 /** 헤드 외곽(물방울) 점들: 스로트(아래)에서 시작해 한 바퀴 */
 function racketOutline(inset = 0): THREE.Vector2[] {
   const R = RACKET;
   const half: [number, number][] = [
-    [0.004, R.throatY],
-    [0.03, -0.38],
-    [0.06, -0.41],
-    [0.084, -0.45],
-    [R.headHalfW, -0.5],
-    [0.088, -0.555],
-    [0.068, -0.588],
-    [0.036, -0.603],
-    [0, R.headTop - 0.006],
+    [0.005, R.throatY],
+    [0.016, -0.32],
+    [0.03, -0.36],
+    [0.046, -0.4],
+    [0.062, -0.44],
+    [0.077, -0.48],
+    [0.089, -0.52],
+    [R.headHalfW, -0.555],
+    [0.094, -0.59],
+    [0.086, -0.616],
+    [0.068, -0.635],
+    [0.04, -0.645],
+    [0, R.headTop - 0.005],
   ];
-  const right = half.map(([x, y]) => new THREE.Vector2(Math.max(0, x - inset), y + (y > -0.5 ? -inset : inset * 0.6)));
+  // 안쪽 외곽: 가로는 안으로, 세로는 넓은 부분(-0.53) 쪽으로
+  const right = half.map(([x, y]) => new THREE.Vector2(Math.max(0, x - inset), y + (y > -0.53 ? -inset : inset)));
   const left = [...right].reverse().slice(1, -1).map((v) => new THREE.Vector2(-v.x, v.y));
   return [...right, ...left];
 }
@@ -176,7 +182,7 @@ function createRacket(accent: number): { racket: THREE.Group; racketHead: THREE.
   const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
   const frame = part(new THREE.TubeGeometry(curve, 80, 0.0062, 6, true), 0x22222a, 0.005);
   head.add(frame);
-  const stripePts = pts.filter((p) => p.y < -0.44 && p.y > -0.56);
+  const stripePts = pts.filter((p) => p.y < -0.42 && p.y > -0.6);
   for (const side of [-1, 1]) {
     const seg = stripePts.filter((p) => Math.sign(p.x) === side).map((p) => new THREE.Vector3(p.x * 1.002, p.y, 0.004));
     if (seg.length > 1) head.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(seg), 12, 0.0045, 5), toon(accent)));
@@ -209,11 +215,11 @@ function createRacket(accent: number): { racket: THREE.Group; racketHead: THREE.
     }
     return ys.length >= 2 ? [Math.min(...ys), Math.max(...ys)] : null;
   };
-  for (let y = R.headTop + 0.012; y < R.throatY - 0.04; y += 0.013) {
+  for (let y = R.headTop + 0.014; y < R.throatY - 0.035; y += 0.0165) {
     const r = crossAt(y);
     if (r) seg.push(r[0], y, 0.001, r[1], y, 0.001);
   }
-  for (let x = -R.headHalfW + 0.012; x < R.headHalfW - 0.008; x += 0.012) {
+  for (let x = -R.headHalfW + 0.0115; x < R.headHalfW - 0.006; x += 0.0115) {
     const r = rangeAtX(x);
     if (r) seg.push(x, r[0], 0.001, x, r[1], 0.001);
   }

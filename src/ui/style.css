@@ -207,7 +207,7 @@ input[type=range] { width: 180px; accent-color: var(--yellow); }
 .touch-note { margin-top: 10px !important; padding: 8px 14px; border-radius: 12px; background: rgba(255, 90, 95, 0.2); border: 2px solid var(--coral); color: #fff !important; font-weight: 700; }
 
 /* ── 조작 시각화 (흰 선 + 누르면 노랑 채움) ── */
-.ctl-keys { position: absolute; left: 20px; top: 18px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.ctl-keys { position: absolute; left: max(48px, 5vw); top: max(84px, 10vh); display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .kc-row { display: flex; gap: 6px; }
 .kc {
   width: 44px; height: 44px; border-radius: 10px; border: 3px solid #fff; display: flex; align-items: center; justify-content: center;
@@ -215,7 +215,7 @@ input[type=range] { width: 180px; accent-color: var(--yellow); }
 }
 .kc.on { background: var(--yellow); border-color: var(--yellow); color: #1a1238; transform: translateY(2px); }
 .ctl-label { font-size: 13px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px #000; }
-.ctl-mouse { position: absolute; right: 20px; top: 84px; width: 132px; }
+.ctl-mouse { position: absolute; right: max(48px, 5vw); top: max(96px, 11vh); width: 132px; }
 .ctl-mouse svg { width: 100%; height: auto; overflow: visible; }
 .ctl-mouse .mb, .ctl-mouse .mbody { fill: transparent; stroke: #fff; stroke-width: 4; stroke-linejoin: round; transition: fill 0.06s; }
 .ctl-mouse .mb.on { fill: var(--yellow); stroke: var(--yellow); }
