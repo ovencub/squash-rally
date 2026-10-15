@@ -46,16 +46,16 @@ const DULL_EQ: Eq[] = [
   ['highshelf', 1600, -3],
 ];
 const BANK: Record<SfxName, Patch> = {
-  hit_soft: { file: 0.12, layer: ['rubber_hit', 0.9], wet: 0.3, rate: 1.06, eq: DULL_EQ },
-  hit_hard: { file: 0.14, layer: ['rubber_hit', 1.0], wet: 0.36, rate: 1.0, eq: DULL_EQ },
-  hit_perfect: { file: 0.16, layer: ['rubber_hit_perfect', 1.1], wet: 0.42, rate: 0.96, eq: DULL_EQ },
-  bounce_front: { file: 0.14, layer: ['rubber_wall', 1.0], wet: 0.4, rate: 1.0, eq: DULL_EQ },
-  bounce_side: { file: 0.11, layer: ['rubber_wall', 0.75], wet: 0.35, rate: 1.05, eq: DULL_EQ },
-  bounce_glass: { file: 0.05, layer: ['rubber_glass', 0.9], wet: 0.35, eq: DULL_EQ },
+  hit_soft: { file: 0.12, layer: ['rubber_hit', 0.9], wet: 0.24, rate: 1.06, eq: DULL_EQ },
+  hit_hard: { file: 0.14, layer: ['rubber_hit', 1.0], wet: 0.28, rate: 1.0, eq: DULL_EQ },
+  hit_perfect: { file: 0.16, layer: ['rubber_hit_perfect', 0.95], wet: 0.32, rate: 0.96, eq: DULL_EQ },
+  bounce_front: { file: 0.14, layer: ['rubber_wall', 1.0], wet: 0.32, rate: 1.0, eq: DULL_EQ },
+  bounce_side: { file: 0.11, layer: ['rubber_wall', 0.75], wet: 0.3, rate: 1.05, eq: DULL_EQ },
+  bounce_glass: { file: 0.05, layer: ['rubber_glass', 0.8], wet: 0.3, eq: DULL_EQ },
   bounce_floor: { file: 0.3, layer: ['rubber_floor', 0.95], wet: 0.25, rate: 1.0, eq: DULL_EQ },
   tin: { file: 1, layer: ['tin', 0.5], wet: 0.55 },
   squeak: { file: 0, wet: 0.4 },
-  step: { file: 0.5, wet: 0.22 },
+  step: { file: 0.35, wet: 0.22 },
   ui_hover: { file: 0.5, wet: 0 },
   ui_click: { file: 0.8, wet: 0 },
   ui_confirm: { file: 0.8, wet: 0 },
@@ -173,10 +173,14 @@ class Sfx {
       if (!AC) throw new Error('AudioContext 없음');
       this.ctx = new AC();
       this.out = this.ctx.createGain();
-      // 마스터 리미터 (잔향과 겹쳐도 찢어지지 않게)
+      // 마스터 리미터 (잔향과 겹쳐도 찢어지지 않게). 꼭대기만 잡는다:
+      // 예전 설정(기본 knee 30dB)은 -25dB부터 눌러서 세게 친 '팡'이 약한 공과 비슷한 크기로 뭉개졌음
       const comp = this.ctx.createDynamicsCompressor();
-      comp.threshold.value = -10;
-      comp.ratio.value = 6;
+      comp.threshold.value = -3;
+      comp.knee.value = 2;
+      comp.ratio.value = 20;
+      comp.attack.value = 0.001;
+      comp.release.value = 0.12;
       this.out.connect(comp).connect(this.ctx.destination);
       this.reverb = this.ctx.createConvolver();
       this.reverb.buffer = makeImpulse(this.ctx, tuning.audio.reverbSeconds);

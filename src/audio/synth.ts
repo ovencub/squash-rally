@@ -68,6 +68,31 @@ function snap(ctx: AudioContext, out: AudioNode, t: number, vol: number, center:
   src.stop(t + dur + 0.03);
 }
 
+/**
+ * 팝: 속 빈 고무공이 찌그러졌다 튀며 울리는 '팡' — 공진(Q 높은 대역) 노이즈라 '쉬익'이 아니라 음색 있는 터짐.
+ * 테니스공 타구음의 몸통. 크게 들리도록 수십 ms 에너지를 가진다 (dur = -80dB까지 시간).
+ */
+function pop(ctx: AudioContext, out: AudioNode, t: number, vol: number, center: number, q: number, dur: number) {
+  const src = ctx.createBufferSource();
+  src.buffer = noise(ctx);
+  const hpf = ctx.createBiquadFilter();
+  hpf.type = 'highpass';
+  hpf.frequency.value = 450;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = center;
+  bp.Q.value = q;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 5000;
+  src.connect(hpf).connect(bp).connect(lp).connect(env(ctx, out, t, vol, 0.0005, dur));
+  src.start(t);
+  src.stop(t + dur + 0.03);
+}
+
+/** 세기 곡선: 약한 공은 거의 몸통만, 셀수록 팝·크랙이 급격히 커진다 (0.15 → 0.15, 0.5 → 0.42, 1 → 1) */
+const popAmt = (k: number) => 0.1 + 0.9 * Math.pow(Math.max(0, Math.min(1, k)), 1.5);
+
 /** 감쇠 사인 모드 + 피치 하강 (고무가 눌렸다 펴지며 음이 살짝 내려감) */
 function modeDrop(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0: number, f1: number, decay: number, attack = 0.002) {
   const o = ctx.createOscillator();
@@ -172,43 +197,54 @@ export const SYNTH: Record<string, Synth> = {
   // ── 고무공 레이어 (피드백: 고무공을 세게 때리는 둔탁하고 묵직한 소리) ──
   // 낮은 '쿵' + 속 빈 고무공 공진(피치가 살짝 떨어짐) + 중음 '퍽'. 2.5kHz 위 날카로운 성분은 거의 없음.
   // 라켓: 세기 k(타구 속력)에 따라 — 약하면 고무 '톡', 세면 테니스처럼 '팡!' (스냅이 커지고 짧아짐)
+  // 라켓: 세기 k(타구 속력)에 따라 — 약하면 고무 '퍽', 세면 테니스처럼 크게 '팡!' (팝 + 크랙이 커짐)
   rubber_hit: (c, o, t, v, p, k) => {
-    snap(c, o, t, v * (0.3 + 1.5 * k * k), (900 + 700 * k) * p, 0.03 - 0.008 * k);
+    const a = popAmt(k);
+    pop(c, o, t, v * 2.6 * a, (950 + 450 * k) * p, 1.5, 0.05);
+    snap(c, o, t, v * 1.3 * a, (1400 + 700 * k) * p, 0.016);
     modeDrop(c, o, t, v * 0.06, 155 * p, 95 * p, 0.028, 0.0015); // 낮은 '쿵'
     modeDrop(c, o, t, v * 0.08, 380 * p, 290 * p, 0.02, 0.0015); // 속 빈 고무공 몸통
     modeDrop(c, o, t, v * 0.12, 640 * p, 520 * p, 0.016, 0.0015); // 고무 공진
-    thud(c, o, t, v * (0.8 - 0.4 * k), 950 * p, 0.85, 0.075, 0.0016); // 중음 '퍽' (약할수록 이게 주인공)
+    thud(c, o, t, v * (0.7 - 0.25 * k), 950 * p, 0.85, 0.06, 0.0016); // 중음 '퍽' (약할수록 이게 주인공)
     mode(c, o, t, v * 0.06, 1300 * p, 0.007); // 줄 소리 아주 살짝
   },
   rubber_hit_perfect: (c, o, t, v, p, k) => {
-    snap(c, o, t, v * (0.7 + 1.3 * k * k), (1100 + 600 * k) * p, 0.032 - 0.008 * k);
-    snap(c, o, t + 0.0015, v * 0.3 * k, 3000 * p, 0.01); // 겹 스냅: 더 '쩍'
+    const a = popAmt(k);
+    pop(c, o, t, v * 3.0 * a, (1000 + 450 * k) * p, 1.5, 0.055);
+    snap(c, o, t, v * 1.5 * a, (1500 + 800 * k) * p, 0.018);
+    snap(c, o, t + 0.0015, v * 0.5 * a, 3000 * p, 0.01); // 겹 스냅: 더 '쩍'
     modeDrop(c, o, t, v * 0.08, 140 * p, 85 * p, 0.034, 0.0015);
     modeDrop(c, o, t, v * 0.09, 360 * p, 270 * p, 0.024, 0.0015);
     modeDrop(c, o, t, v * 0.13, 620 * p, 500 * p, 0.018, 0.0015);
-    thud(c, o, t, v * (0.75 - 0.35 * k), 900 * p, 0.8, 0.09, 0.0016);
+    thud(c, o, t, v * (0.7 - 0.25 * k), 900 * p, 0.8, 0.07, 0.0016);
     mode(c, o, t, v * 0.07, 1250 * p, 0.008);
   },
   // 벽(시멘트·석고): 충돌 속력 k에 따라 — 약하면 '툭', 세면 '팡!' + 벽이 울리는 낮은 붐
   rubber_wall: (c, o, t, v, p, k) => {
-    snap(c, o, t, v * (0.18 + 1.3 * k * k), (850 + 500 * k) * p, 0.03 - 0.008 * k);
+    const a = popAmt(k);
+    pop(c, o, t, v * 2.6 * a, (850 + 400 * k) * p, 1.4, 0.055);
+    snap(c, o, t, v * 1.1 * a, (1300 + 700 * k) * p, 0.016);
     modeDrop(c, o, t, v * 0.025, 125 * p, 80 * p, 0.035, 0.002);
     modeDrop(c, o, t, v * 0.05, 300 * p, 240 * p, 0.026, 0.002);
-    thud(c, o, t, v * (0.75 - 0.35 * k), 720 * p, 0.8, 0.09, 0.0022);
+    thud(c, o, t, v * (0.7 - 0.25 * k), 720 * p, 0.8, 0.07, 0.0022);
     mode(c, o, t, v * (0.01 + 0.015 * k), 70 * p, 0.06); // 벽 전체가 울리는 낮은 붐 (셀수록 큼)
   },
   // 마룻바닥: 약하면 짧고 낮은 '텁', 세게 떨어지면 '탁!'
   rubber_floor: (c, o, t, v, p, k) => {
-    snap(c, o, t, v * (0.3 + 1.5 * k * k), (950 + 550 * k) * p, 0.024 - 0.006 * k);
+    const a = popAmt(k);
+    pop(c, o, t, v * 2.2 * a, (750 + 400 * k) * p, 1.3, 0.04);
+    snap(c, o, t, v * 1.0 * a, (1200 + 600 * k) * p, 0.012);
     modeDrop(c, o, t, v * 0.08, 115 * p, 75 * p, 0.025, 0.002);
-    thud(c, o, t, v * (0.75 - 0.3 * k), 450 * p, 1.0, 0.06, 0.002);
+    thud(c, o, t, v * (0.7 - 0.25 * k), 450 * p, 1.0, 0.05, 0.002);
     mode(c, o, t, v * 0.12, 560 * p, 0.012); // 나무 노크 살짝
   },
   // 유리 뒷벽: 둔탁한 '텅' + 유리 울림 아주 약하게
   rubber_glass: (c, o, t, v, p, k) => {
-    snap(c, o, t, v * (0.25 + 1.0 * k * k), (1000 + 500 * k) * p, 0.026 - 0.006 * k);
-    modeDrop(c, o, t, v * 0.5, 150 * p, 105 * p, 0.03, 0.002);
-    thud(c, o, t, v * 0.8, 460 * p, 0.9, 0.08, 0.002);
+    const a = popAmt(k);
+    pop(c, o, t, v * 2.0 * a, (800 + 400 * k) * p, 1.4, 0.05);
+    snap(c, o, t, v * 0.8 * a, (1200 + 500 * k) * p, 0.014);
+    modeDrop(c, o, t, v * 0.18, 150 * p, 105 * p, 0.03, 0.002);
+    thud(c, o, t, v * 0.6, 460 * p, 0.9, 0.07, 0.002);
     mode(c, o, t, v * (0.03 + 0.05 * k), 1150 * p, 0.04);
     mode(c, o, t, v * 0.015, 2600 * p, 0.03);
   },

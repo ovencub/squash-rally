@@ -444,13 +444,13 @@ export class Game {
     const hasInput = !locked && (this.moveInput.x !== 0 || this.moveInput.z !== 0);
     const target = !locked && !hasInput && tuning.debug.autoplay && this.ring ? standSpotFor(this.ring.point, this.playerPos, w.court) : null;
     const ratio = this.settings.moveSpeed / tuning.player.maxSpeed;
-    if (moveStep(this.A.mover, realDt, w.court, hasInput ? this.moveInput : null, target, ratio)) sfx.play('squeak', 0.7);
+    if (moveStep(this.A.mover, realDt, w.court, hasInput ? this.moveInput : null, target, ratio)) sfx.play('squeak', tuning.audio.squeakVol);
     this.footsteps(this.A, realDt, 1);
 
     // AI: 기본 이동 속도 × 난이도 비율 (사람과 같은 이동 모델)
     if (this.B && this.mode === 'match') {
       const t = locked ? null : this.B.target;
-      if (moveStep(this.B.mover, realDt, w.court, null, t, tuning.ai.level[this.difficulty].speedRatio)) sfx.play('squeak', 0.4);
+      if (moveStep(this.B.mover, realDt, w.court, null, t, tuning.ai.level[this.difficulty].speedRatio)) sfx.play('squeak', tuning.audio.squeakVol * 0.6);
       this.footsteps(this.B, realDt, 0.5);
       this.separate();
     } else if (this.B && this.remote) {
@@ -505,7 +505,7 @@ export class Game {
     if (ct.rolling) return;
     const v = sfx.speedVol(ct.normalSpeed);
     // 세기 = 면에 부딪히는 속력: 약하면 '툭', 세면 '팡!'
-    const impact = Math.max(0, Math.min(1, ct.normalSpeed / tuning.audio.speedForFullVolume));
+    const impact = Math.max(0, Math.min(1, ct.normalSpeed / tuning.audio.impactFullSpeed[ct.surface]));
     sfx.play(BOUNCE_SFX[ct.surface], ct.surface === 'tin' ? 1 : v, 1, impact);
     if (ct.surface === 'front' || ct.surface === 'tin') this.wallMarks.add(ct.point);
     this.debugDraw.addActual(ct, tuning.debug.showContacts);

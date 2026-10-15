@@ -170,9 +170,13 @@ export const tuning = {
   },
 
   audio: {
-    master: 0.8,
+    master: 1.0,
     pitchJitter: 0.05, // ±5%
     speedForFullVolume: 22, // m/s
+    // 면별 '최대 세기'로 치는 충돌 속력(면에 수직 성분, m/s). 바닥·옆벽은 원래 수직 속력이 작아서 기준을 낮춤
+    // (실측 랠리: 앞벽 중앙값 18m/s, 옆벽 4~10, 바닥 2~7)
+    impactFullSpeed: { front: 22, tin: 22, left: 11, right: 11, back: 11, floor: 7.5 },
+    squeakVol: 0.45, // 신발 스퀵 (공 소리보다 작게)
     // M5: 큰 돔 체육관 잔향
     reverb: 0.55, // 잔향 출력 크기 (0 = 없음)
     reverbSeconds: 2.8, // 잔향 길이 (RT60)
