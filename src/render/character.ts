@@ -38,19 +38,18 @@ export interface Character {
   /** 손 위치 (트레일 안쪽 끝) */
   hand: THREE.Object3D;
   pose: Pose;
-  runPhase: number;
   idleT: number;
+  /** 하체·기울기 움직임 기억 (발 디딤, 가속, 스프링) */
+  loco: Loco;
   /** 임팩트 때 공 쪽으로 내딛는 시각적 이동량 (월드, 게임 위치에 더해서 그림) */
   lunge: THREE.Vector3;
 }
 
-/** 블렌딩되는 관절 각도 묶음 */
+/** 블렌딩되는 상체 관절 각도 묶음 (하체는 발 디딤 + IK) */
 interface Pose {
-  yaw: number;
   spineX: number; // 앞으로 숙임(음수)
   spineY: number; // 몸통 비틀기
   spineZ: number; // 옆으로 기울기
-  legs: { pitch: number; roll: number; knee: number }[];
   armR: { x: number; y: number; z: number; elbow: number; wrist: number };
   armL: { x: number; z: number; elbow: number };
 }
@@ -237,14 +236,9 @@ function createRacket(accent: number): { racket: THREE.Group; racketHead: THREE.
 
 function basePose(): Pose {
   return {
-    yaw: 0,
-    spineX: -0.25,
+    spineX: -0.22,
     spineY: 0,
     spineZ: 0,
-    legs: [
-      { pitch: 0.35, roll: -0.16, knee: 0.75 },
-      { pitch: 0.35, roll: 0.16, knee: 0.75 },
-    ],
     armR: { x: 0.7, y: 0, z: 0.45, elbow: 1.5, wrist: 0.9 },
     armL: { x: 0.5, z: -0.35, elbow: 1.2 },
   };
@@ -337,11 +331,11 @@ export function createCharacter(shirt: number, trim: number = palette.accent): C
     racketHead,
     hand: armR.hand,
     pose: basePose(),
-    runPhase: 0,
     idleT: 0,
     lunge: new THREE.Vector3(),
+    loco: createLoco(),
   };
-  applyPose(ch);
+  applyUpper(ch);
   return ch;
 }
 
@@ -361,6 +355,8 @@ export interface AnimState {
   prep?: number;
   /** 새 임팩트 프레임: 히트스톱 중이어도 즉시 임팩트 자세로 맞춤 */
   snap?: boolean;
+  /** 준비 동작 중 예상 타점(월드) — 공이 오기 전에 그쪽으로 미리 발을 내딛음 */
+  aimBall?: THREE.Vector3 | null;
 }
 
 /** 스윙 진행도에서 임팩트 순간 (맞히면 이 지점부터 재생) */
@@ -368,31 +364,73 @@ export const SWING_CONTACT = 0.3;
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const smooth = (t: number) => t * t * (3 - 2 * t);
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 type ArmKey = Pose['armR'];
-type SwingKey = { spineY: number; spineX: number; arm: ArmKey; lunge: number };
+/** 스윙 키: 상체 비틀기·숙임, 골반(엉덩이) 회전, 체중 이동(0 뒷발 → 1 앞발), 라켓 팔, 왼팔 */
+type SwingKey = { spineY: number; spineX: number; hipY: number; weight: number; arm: ArmKey; armL: Pose['armL'] };
 
-// 스윙 키프레임: [백스윙, 임팩트, 팔로스루]
+// 스윙 키프레임: [백스윙, 임팩트, 팔로스루]. 골반이 어깨보다 먼저 돌고(꼬임), 왼팔은 반대로 뻗어 균형.
 const FORE: SwingKey[] = [
-  { spineY: -0.85, spineX: -0.2, lunge: 0.3, arm: { x: -0.2, y: 0.3, z: 1.4, elbow: 1.7, wrist: 1.2 } },
-  { spineY: 0.05, spineX: -0.45, lunge: 1, arm: { x: 0.5, y: 0, z: 0.85, elbow: 0.25, wrist: 0.4 } },
-  { spineY: 0.95, spineX: -0.3, lunge: 0.6, arm: { x: 1.7, y: -0.4, z: 0.4, elbow: 1.5, wrist: 0.6 } },
+  {
+    spineY: -0.95,
+    spineX: -0.22,
+    hipY: -0.45,
+    weight: 0.2,
+    arm: { x: -0.2, y: 0.3, z: 1.4, elbow: 1.7, wrist: 1.2 },
+    armL: { x: 0.9, z: -0.25, elbow: 0.5 },
+  },
+  {
+    spineY: 0.1,
+    spineX: -0.45,
+    hipY: 0.25,
+    weight: 0.85,
+    arm: { x: 0.5, y: 0, z: 0.85, elbow: 0.25, wrist: 0.4 },
+    armL: { x: 0.35, z: -1.05, elbow: 0.35 },
+  },
+  {
+    spineY: 1.05,
+    spineX: -0.32,
+    hipY: 0.5,
+    weight: 1,
+    arm: { x: 1.7, y: -0.4, z: 0.4, elbow: 1.5, wrist: 0.6 },
+    armL: { x: 0.2, z: -0.7, elbow: 1.1 },
+  },
 ];
 const BACK: SwingKey[] = [
-  { spineY: 0.95, spineX: -0.2, lunge: 0.3, arm: { x: 1.3, y: -0.6, z: -0.6, elbow: 1.9, wrist: 1.3 } },
-  { spineY: -0.1, spineX: -0.45, lunge: 1, arm: { x: 0.6, y: 0.2, z: -0.8, elbow: 0.25, wrist: 0.4 } },
-  { spineY: -0.85, spineX: -0.25, lunge: 0.6, arm: { x: 1.4, y: 0.5, z: 1.0, elbow: 0.7, wrist: 0.5 } },
+  {
+    spineY: 1.05,
+    spineX: -0.22,
+    hipY: 0.5,
+    weight: 0.2,
+    arm: { x: 1.3, y: -0.6, z: -0.6, elbow: 1.9, wrist: 1.3 },
+    armL: { x: 0.85, z: 0.25, elbow: 1.5 },
+  },
+  {
+    spineY: -0.1,
+    spineX: -0.45,
+    hipY: -0.2,
+    weight: 0.85,
+    arm: { x: 0.6, y: 0.2, z: -0.8, elbow: 0.25, wrist: 0.4 },
+    armL: { x: -0.35, z: -0.9, elbow: 0.3 },
+  },
+  {
+    spineY: -0.95,
+    spineX: -0.28,
+    hipY: -0.45,
+    weight: 1,
+    arm: { x: 1.4, y: 0.5, z: 1.0, elbow: 0.7, wrist: 0.5 },
+    armL: { x: -0.2, z: -0.5, elbow: 0.8 },
+  },
 ];
 
 function swingKey(keys: SwingKey[], t: number): SwingKey {
-  const [a, b, c] = t < SWING_CONTACT ? [keys[0], keys[1], smooth(t / SWING_CONTACT)] : [keys[1], keys[2], smooth((t - SWING_CONTACT) / (1 - SWING_CONTACT))];
-  const k = c as number;
-  const A = a as SwingKey;
-  const B = b as SwingKey;
+  const [A, B, k] = t < SWING_CONTACT ? [keys[0], keys[1], smooth(t / SWING_CONTACT)] : [keys[1], keys[2], smooth((t - SWING_CONTACT) / (1 - SWING_CONTACT))];
   return {
     spineY: lerp(A.spineY, B.spineY, k),
     spineX: lerp(A.spineX, B.spineX, k),
-    lunge: lerp(A.lunge, B.lunge, k),
+    hipY: lerp(A.hipY, B.hipY, k),
+    weight: lerp(A.weight, B.weight, k),
     arm: {
       x: lerp(A.arm.x, B.arm.x, k),
       y: lerp(A.arm.y, B.arm.y, k),
@@ -400,116 +438,343 @@ function swingKey(keys: SwingKey[], t: number): SwingKey {
       elbow: lerp(A.arm.elbow, B.arm.elbow, k),
       wrist: lerp(A.arm.wrist, B.arm.wrist, k),
     },
+    armL: { x: lerp(A.armL.x, B.armL.x, k), z: lerp(A.armL.z, B.armL.z, k), elbow: lerp(A.armL.elbow, B.armL.elbow, k) },
   };
 }
 
-/** 이번 프레임의 목표 자세 계산 */
-function targetPose(ch: Character, dt: number, st: AnimState): Pose {
-  const p = basePose();
-  const speed = Math.hypot(st.vx, st.vz);
-  const run = Math.min(1, speed / (st.maxSpeed * 0.55));
+// ── 하체: 발 디딤 + 다리 IK ──
+// 발은 월드에 디딘 채 고정되고, 몸이 멀어지면 그때 한 발씩 내딛는다(미끄러짐 없음).
+// 출발 첫걸음, 급정지 때 앞에 박는 브레이크 발 + 따라붙는 마무리 걸음, 방향 전환 스텝 같은 '연결 동작'이 여기서 저절로 나온다.
 
-  // 몸 방향: 크게 앞/옆으로 달릴 때만 진행 방향으로 살짝 돌림 (뒤로는 앞벽을 보며 백페달)
-  let heading = Math.atan2(-st.vx, -st.vz);
-  if (heading > Math.PI / 2) heading -= Math.PI;
-  if (heading < -Math.PI / 2) heading += Math.PI;
-  p.yaw = st.swing === null ? Math.max(-0.6, Math.min(0.6, heading)) * run : 0;
+/** 발 하나의 상태 (월드 좌표) */
+export interface Foot {
+  x: number;
+  z: number;
+  /** 바닥에서 든 높이 */
+  h: number;
+  air: boolean;
+  fromX: number;
+  fromZ: number;
+  t: number;
+  dur: number;
+  lift: number;
+}
 
-  // 로컬 속도 (앞 = -z)
-  const c = Math.cos(p.yaw);
-  const s = Math.sin(p.yaw);
-  const lx = st.vx * c - st.vz * s;
-  const lz = st.vx * s + st.vz * c;
-  const fwd = -lz / Math.max(speed, 1e-3); // +1 앞으로, -1 뒤로
-  const lat = lx / Math.max(speed, 1e-3); // +1 오른쪽
+/** 프레임 사이에 이어지는 움직임 기억 (가속도, 스프링, 발) */
+export interface Loco {
+  init: boolean;
+  feet: [Foot, Foot];
+  vx: number;
+  vz: number;
+  ax: number;
+  az: number;
+  yaw: number;
+  /** 몸 기울기 스프링 (앞 +, 오른쪽 +) — 덜 감쇠시켜 멈출 때 한 번 출렁이고 자리 잡음 */
+  leanF: number;
+  leanFv: number;
+  leanS: number;
+  leanSv: number;
+  /** 골반 눌림 스프링 (착지·브레이크 충격 흡수) */
+  drop: number;
+  dropV: number;
+  pelvisY: number;
+  /** 골반 수평 이동 (체중 이동, 루트 로컬) */
+  shiftX: number;
+  shiftZ: number;
+  hipY: number;
+  /** 스윙 시작 순간의 달리기 기세 (0 서서 → 1 전력질주) 와 진행 방향(로컬) */
+  swingMom: number;
+  swingDirX: number;
+  swingDirF: number;
+  wasSwing: boolean;
+  lastX: number;
+  lastZ: number;
+  /** 급정지 전환 (1 → 0, 약 0.45초): 브레이크 발을 앞에 박고 낮게 버텼다가 일어남. 방향 = 멈추기 전 진행 방향(로컬) */
+  stopK: number;
+  stopX: number;
+  stopF: number;
+  /** 최근 최고 속력 (급정지 세기 판단) */
+  recentSpeed: number;
+}
 
-  ch.runPhase += dt * (5 + speed * 1.9);
-  ch.idleT += dt;
-  const ph = ch.runPhase;
-  for (let i = 0; i < 2; i++) {
-    const off = i === 0 ? 0 : Math.PI;
-    const sw = Math.sin(ph + off);
-    const lift = Math.max(0, Math.cos(ph + off)); // 다리를 앞으로 가져올 때 무릎을 접음
-    const L = p.legs[i];
-    // 앞뒤 달리기: 엉덩관절 앞뒤 + 무릎 접기
-    L.pitch += sw * 0.75 * run * Math.abs(fwd) * Math.sign(fwd || 1);
-    L.knee += lift * 1.1 * run * Math.abs(fwd);
-    // 옆 스텝(셔플): 다리 벌렸다 모으기
-    const side = i === 0 ? -1 : 1;
-    L.roll += side * sw * 0.22 * run * Math.abs(lat);
-    L.knee += lift * 0.45 * run * Math.abs(lat);
+export function createLoco(): Loco {
+  const foot = (): Foot => ({ x: 0, z: 0, h: 0, air: false, fromX: 0, fromZ: 0, t: 0, dur: 0.2, lift: 0 });
+  return {
+    init: false,
+    feet: [foot(), foot()],
+    vx: 0,
+    vz: 0,
+    ax: 0,
+    az: 0,
+    yaw: 0,
+    leanF: 0,
+    leanFv: 0,
+    leanS: 0,
+    leanSv: 0,
+    drop: 0,
+    dropV: 0,
+    pelvisY: 0.82,
+    shiftX: 0,
+    shiftZ: 0,
+    hipY: 0,
+    swingMom: 0,
+    swingDirX: 0,
+    swingDirF: 0,
+    wasSwing: false,
+    lastX: 0,
+    lastZ: 0,
+    stopK: 0,
+    stopX: 0,
+    stopF: 0,
+    recentSpeed: 0,
+  };
+}
+
+/** 감쇠 스프링 한 스텝: 목표 x0로, 고유진동수 w(rad/s), 감쇠비 z */
+function spring(x: number, v: number, x0: number, w: number, z: number, dt: number): [number, number] {
+  v += (w * w * (x0 - x) - 2 * z * w * v) * dt;
+  return [x + v * dt, v];
+}
+
+// 걸음·자세 튜닝 (렌더 전용)
+const LEG = THIGH + SHIN;
+const STANCE_W = 0.19; // 준비 자세 발 간격(반)
+const RUN_W = 0.1;
+const READY_Y = 0.8; // 준비 자세 골반 높이 (무릎 굽힘)
+const RUN_Y = 0.84;
+
+const _a = new THREE.Vector3();
+const _b = new THREE.Vector3();
+const _c = new THREE.Vector3();
+const _qa = new THREE.Quaternion();
+const _qb = new THREE.Quaternion();
+const _e = new THREE.Euler();
+
+/** 루트 로컬(x 오른쪽, f 앞) → 월드 xz */
+function toWorld(ch: Character, yaw: number, x: number, f: number): [number, number] {
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  // 로컬 (x, z=-f) 를 yaw만큼 회전
+  const lz = -f;
+  return [ch.root.position.x + x * c + lz * s, ch.root.position.z - x * s + lz * c];
+}
+/** 월드 xz → 루트 로컬 (x 오른쪽, f 앞) */
+function toLocal(ch: Character, yaw: number, wx: number, wz: number): [number, number] {
+  const dx = wx - ch.root.position.x;
+  const dz = wz - ch.root.position.z;
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  return [dx * c - dz * s, -(dx * s + dz * c)];
+}
+
+/**
+ * 하체 목표: 각 발의 '있어야 할 자리'(루트 로컬)와 골반 높이.
+ * 준비 자세(넓게) ↔ 달리기(좁게), 준비 동작/스윙 때는 칠 쪽 발을 공 방향으로 내딛음(런지).
+ */
+function footHomes(ch: Character, st: AnimState, run: number, swingW: number, lead: number, reach: { x: number; f: number; far: number }): [number, number][] {
+  // (reach는 준비 동작 중 예상 타점으로 바뀔 수 있음)
+  const L = ch.loco;
+  const w = lerp(STANCE_W, RUN_W, run);
+  const homes: [number, number][] = [
+    [-w, 0.02],
+    [w, -0.02],
+  ];
+  // 준비 동작: 예상 타점 쪽으로 미리 내딛어(스텝 인) 공이 올 때 이미 런지 자세. 타점을 모르면 칠 쪽 발만 살짝 엶
+  const prep = st.swing === null ? (st.prep ?? 0) : 0;
+  let lungeW = swingW;
+  if (prep > 0) {
+    if (st.aimBall) {
+      const [bx, bf] = toLocal(ch, L.yaw, st.aimBall.x, st.aimBall.z);
+      reach = { x: bx, f: bf, far: clamp((Math.hypot(bx, bf) - 0.45) / 0.9, 0, 1) };
+      lungeW = Math.max(lungeW, smooth(clamp((prep - 0.35) / 0.65, 0, 1)) * 0.9);
+    } else {
+      const side = lead === 1 ? 1 : -1;
+      homes[lead] = [lerp(homes[lead][0], side * 0.26, prep * 0.6), lerp(homes[lead][1], 0.14, prep * 0.6)];
+      homes[1 - lead] = [lerp(homes[1 - lead][0], -side * 0.2, prep * 0.6), lerp(homes[1 - lead][1], -0.12, prep * 0.6)];
+    }
   }
-  // 정지 시 가볍게 들썩이는 준비 자세 (스플릿 스텝 느낌)
-  const idle = 1 - run;
-  p.legs.forEach((L) => (L.knee += Math.sin(ch.idleT * 5) * 0.06 * idle));
+  // 급정지: 진행 방향으로 브레이크 발을 앞에 박고 뒷발은 뒤에 두어 넓게 버팀 (앞쪽에 있던 발이 브레이크 발)
+  if (L.stopK > 0 && lungeW === 0) {
+    const k = L.stopK;
+    const [l0x, l0f] = toLocal(ch, L.yaw, L.feet[0].x, L.feet[0].z);
+    const [l1x, l1f] = toLocal(ch, L.yaw, L.feet[1].x, L.feet[1].z);
+    const brake = l0x * L.stopX + l0f * L.stopF > l1x * L.stopX + l1f * L.stopF ? 0 : 1;
+    homes[brake] = [homes[brake][0] + L.stopX * 0.38 * k, homes[brake][1] + L.stopF * 0.38 * k];
+    homes[1 - brake] = [homes[1 - brake][0] - L.stopX * 0.22 * k, homes[1 - brake][1] - L.stopF * 0.22 * k];
+  }
+  if (lungeW > 0) {
+    // 런지: 공 쪽으로 크게 내딛고(멀수록), 뒷발은 뒤로 빼서 무게중심
+    const side = lead === 1 ? 1 : -1;
+    const mom = L.swingMom;
+    const lungeLen = 0.35 + 0.4 * reach.far + 0.2 * mom;
+    const dl = Math.hypot(reach.x, reach.f) || 1;
+    let ux = reach.x / dl;
+    let uf = reach.f / dl;
+    // 달리면서 칠 때는 진행 방향으로 더 쏠림 (관성)
+    ux = lerp(ux, L.swingDirX, mom * 0.5);
+    uf = lerp(uf, L.swingDirF, mom * 0.5);
+    const n = Math.hypot(ux, uf) || 1;
+    const leadX = side * 0.12 + (ux / n) * lungeLen;
+    const leadF = (uf / n) * lungeLen + 0.08;
+    const backX = -side * 0.16 - (ux / n) * 0.18;
+    const backF = -(uf / n) * 0.28 - 0.12;
+    homes[lead] = [lerp(homes[lead][0], leadX, lungeW), lerp(homes[lead][1], leadF, lungeW)];
+    homes[1 - lead] = [lerp(homes[1 - lead][0], backX, lungeW), lerp(homes[1 - lead][1], backF, lungeW)];
+  }
+  return homes;
+}
 
-  // 몸통: 달릴 때 앞으로 숙이고 진행 방향으로 기울임
-  p.spineX += -0.2 * run * Math.max(0, fwd) + 0.12 * run * Math.max(0, -fwd);
-  p.spineZ = -lat * 0.12 * run;
-  // 팔: 달릴 때 왼팔 흔들기, 라켓 팔은 조금만
-  p.armL.x += -Math.sin(ph) * 0.6 * run;
-  p.armR.x += Math.sin(ph) * 0.2 * run;
+/**
+ * 발 디딤 갱신. 서 있을 자리(home)에서 너무 멀어진 발부터 한 발씩 내딛는다.
+ * - 디딘 발은 월드에 고정 → 몸이 지나가며 발이 뒤로 빠짐. 반 보폭(속도 × 걸음 시간의 절반)보다 뒤처지면 다시 내딛음
+ * - 내딛는 발의 착지점 = 착지 순간의 몸 위치 + 디딘 동안 몸이 지나갈 거리의 절반 → 발이 몸 아래를 지나감
+ * - 브레이크 중엔 착지점을 더 앞에 박아 버팀 (급정지 첫 발) → 몸이 멈추면 뒷발이 따라붙어 마무리
+ */
+function stepFeet(ch: Character, dt: number, homesLocal: [number, number][], speed: number, braking: number, swingW: number): void {
+  const L = ch.loco;
+  const sp = clamp(speed / 6.5, 0, 1);
+  const dur = lerp(0.23, 0.115, sp) * (swingW > 0 ? 0.8 : 1);
+  const halfStride = speed * dur * 0.5;
+  const stand = homesLocal.map(([x, f]) => toWorld(ch, L.yaw, x, f));
+  const err = L.feet.map((ft, i) => Math.hypot(ft.x - stand[i][0], ft.z - stand[i][1]));
+  const order = err[0] >= err[1] ? [0, 1] : [1, 0];
+  const thresh = Math.max(speed > 0.6 ? 0.06 : 0.1, halfStride + 0.03);
+  for (const i of order) {
+    const ft = L.feet[i];
+    const other = L.feet[1 - i];
+    if (!ft.air) {
+      const canStep = !other.air || other.t > (speed > 3 ? 0.55 : 0.8);
+      if ((err[i] > thresh && canStep) || err[i] > 0.9) {
+        ft.air = true;
+        ft.fromX = ft.x;
+        ft.fromZ = ft.z;
+        ft.t = 0;
+        ft.dur = dur;
+        ft.lift = 0.04 + 0.11 * sp;
+      }
+    }
+    if (ft.air) {
+      ft.t = Math.min(1, ft.t + dt / ft.dur);
+      // 남은 비행 시간 + 디딤 절반 동안 몸이 갈 거리만큼 앞 (브레이크면 더 앞)
+      const ahead = (1 - ft.t) * ft.dur + ft.dur * (0.5 + 0.5 * braking);
+      const tx = stand[i][0] + L.vx * ahead;
+      const tz = stand[i][1] + L.vz * ahead;
+      const s = smooth(ft.t);
+      ft.x = lerp(ft.fromX, tx, s);
+      ft.z = lerp(ft.fromZ, tz, s);
+      ft.h = ft.lift * Math.sin(Math.PI * ft.t);
+      if (ft.t >= 1) {
+        ft.air = false;
+        ft.h = 0;
+        // 착지 충격: 골반이 살짝 눌렸다 올라옴 (빠를수록, 브레이크일수록 크게)
+        L.dropV -= 0.3 + 0.8 * sp + 0.8 * braking;
+      }
+    }
+  }
+}
+
+/** 다리 2-본 IK: 골반 → 발목이 목표점에 닿도록 엉덩관절(쿼터니언)·무릎을 맞추고 발바닥은 바닥과 평행 */
+function solveLeg(ch: Character, i: number, ankleW: THREE.Vector3, footYaw: number, toe: number): void {
+  const leg = ch.legs[i];
+  const pelvis = ch.pelvis;
+  // 골반 로컬에서 계산
+  const T = _a.copy(ankleW);
+  pelvis.worldToLocal(T);
+  const H = leg.hip.position;
+  const D = _b.copy(T).sub(H);
+  const len = clamp(D.length(), 0.2, LEG - 0.004);
+  const dir = D.normalize();
+  // 무릎은 앞(-z)·약간 바깥쪽
+  const side = i === 0 ? -1 : 1;
+  const pole = _c.set(side * 0.18, 0, -1);
+  pole.sub(dir.clone().multiplyScalar(pole.dot(dir)));
+  if (pole.lengthSq() < 1e-6) pole.set(0, 0, -1);
+  pole.normalize();
+  const a1 = Math.acos(clamp((THIGH * THIGH + len * len - SHIN * SHIN) / (2 * THIGH * len), -1, 1));
+  const u = dir.clone().multiplyScalar(Math.cos(a1)).add(pole.clone().multiplyScalar(Math.sin(a1))).normalize();
+  const K = H.clone().add(u.clone().multiplyScalar(THIGH));
+  const F = H.clone().add(dir.clone().multiplyScalar(len));
+  const s = F.sub(K).normalize();
+  let zAxis = s.clone().sub(u.clone().multiplyScalar(s.dot(u)));
+  if (zAxis.lengthSq() < 1e-6) zAxis = pole.clone().negate();
+  zAxis.normalize();
+  const Y = u.clone().negate();
+  const X = new THREE.Vector3().crossVectors(Y, zAxis).normalize();
+  const Z = new THREE.Vector3().crossVectors(X, Y).normalize();
+  _m.makeBasis(X, Y, Z);
+  leg.hip.quaternion.setFromRotationMatrix(_m);
+  const knee = Math.acos(clamp(u.dot(s), -1, 1));
+  leg.knee.rotation.set(-knee, 0, 0);
+  // 발: 월드에서 (몸 방향 + footYaw)으로 바닥과 평행, toe = 발끝 들기(-)/찍기(+)
+  ch.root.updateMatrixWorld(true);
+  leg.knee.getWorldQuaternion(_qa);
+  _qb.setFromEuler(_e.set(toe, ch.root.rotation.y + footYaw, 0, 'YXZ'));
+  leg.foot.quaternion.copy(_qa.invert().multiply(_qb));
+}
+
+// ── 목표 자세 (상체) ──
+
+function targetPose(ch: Character, dt: number, st: AnimState, run: number): Pose {
+  const p = basePose();
+  const L = ch.loco;
+  ch.idleT += dt;
+
+  // 달릴 때 팔 흔들기: 발 위치와 반대로 (왼발이 앞이면 왼팔은 뒤)
+  const lf = toLocal(ch, L.yaw, L.feet[0].x, L.feet[0].z)[1];
+  const rf = toLocal(ch, L.yaw, L.feet[1].x, L.feet[1].z)[1];
+  const swingArm = clamp((rf - lf) * 1.6, -1, 1);
+  p.armL.x += swingArm * 1.1 * run;
+  p.armL.elbow += 0.45 * run;
+  p.armR.x += -swingArm * 0.35 * run;
+  // 급정지: 왼팔을 옆으로 벌려 균형
+  p.armL.z -= 0.7 * L.stopK;
+  p.armL.x += 0.3 * L.stopK;
+  // 몸통: 달리기 쪽으로 어깨가 살짝 비틀림
+  p.spineY += -swingArm * 0.12 * run;
+
+  // 정지 시 숨쉬듯 들썩이는 준비 자세 + 라켓 끝 까딱
+  const idle = 1 - run;
+  p.armR.wrist += Math.sin(ch.idleT * 3.1) * 0.06 * idle;
+  p.spineX += Math.sin(ch.idleT * 2.2) * 0.025 * idle;
 
   // 준비 동작: 공 쪽으로 어깨를 돌리고 라켓을 뒤로 뺌 (어느 손으로 칠지 미리 보여줌)
   if (st.swing === null && st.prep && st.prep > 0) {
     const k0 = (st.hand === 'fore' ? FORE : BACK)[0];
-    const w = st.prep * 0.85;
+    const w = smooth(st.prep) * 0.9;
     p.spineY = lerp(p.spineY, k0.spineY, w);
     for (const key of ['x', 'y', 'z', 'elbow', 'wrist'] as const) p.armR[key] = lerp(p.armR[key], k0.arm[key], w);
-    p.yaw = lerp(p.yaw, 0, w);
+    for (const key of ['x', 'z', 'elbow'] as const) p.armL[key] = lerp(p.armL[key], k0.armL[key], w * 0.8);
   }
 
   if (st.swing !== null) {
     const keys = st.hand === 'fore' ? FORE : BACK;
     const k = swingKey(keys, st.swing);
-    p.spineY = k.spineY;
-    p.spineX = k.spineX;
+    const mom = L.swingMom;
+    // 뛰면서 칠 때: 몸이 앞으로 쏠린 채 짧고 간결하게 휘두르고(팔로스루 덜 돎) 균형 팔을 크게 벌림
+    p.spineY = k.spineY * (1 - 0.25 * mom);
+    p.spineX = k.spineX - 0.12 * mom;
     p.armR = k.arm;
-    p.armL = { x: 0.6, z: st.hand === 'fore' ? -0.9 : -0.3, elbow: 1.0 };
-    // 런지: 공 쪽 다리를 내딛고 낮게
-    const out = st.hand === 'fore' ? 1 : 0;
-    const L = p.legs[out];
-    const O = p.legs[1 - out];
-    L.pitch = lerp(L.pitch, 0.8, k.lunge);
-    L.roll = lerp(L.roll, (out ? 1 : -1) * 0.35, k.lunge);
-    L.knee = lerp(L.knee, 1.25, k.lunge);
-    O.pitch = lerp(O.pitch, -0.25, k.lunge);
-    O.knee = lerp(O.knee, 0.9, k.lunge);
+    p.armL = { x: k.armL.x, z: k.armL.z - 0.25 * mom, elbow: k.armL.elbow * (1 - 0.4 * mom) };
   }
   if (st.contact && st.contact.w > 0) contactBody(ch, p, st);
   return p;
 }
 
 /**
- * 임팩트 순간 몸 자세: 공이 멀수록 공 쪽으로 몸을 기울이고 다리를 크게 내딛으며,
- * 반대쪽 다리는 뒤로 뻗어 균형을 잡는다. 공이 낮으면 무릎을 굽혀 골반을 낮춘다.
+ * 임팩트 순간 상체: 공이 멀수록 공 쪽으로 몸을 기울이고, 낮을수록 더 숙인다. (하체 런지는 footHomes가 담당)
  */
 function contactBody(ch: Character, p: Pose, st: AnimState): void {
   const c = st.contact!;
   const w = c.w;
-  const rx = c.ball.x - ch.root.position.x; // 오른쪽 +
-  const rf = ch.root.position.z - c.ball.z; // 앞 +
+  const [rx, rf] = toLocal(ch, ch.loco.yaw, c.ball.x, c.ball.z);
   const h = c.ball.y;
   const dist = Math.hypot(rx, rf);
-  const far = Math.min(1, Math.max(0, (dist - 0.45) / 0.9)); // 0 가까움 → 1 멀다
-  const low = Math.min(1, Math.max(0, (1.0 - h) / 0.8)); // 0 높음 → 1 낮다
+  const far = clamp((dist - 0.45) / 0.9, 0, 1);
+  const low = clamp((1.0 - h) / 0.8, 0, 1);
   const side = st.hand === 'fore' ? 1 : -1;
-  // 상체: 공 쪽으로 옆 기울기 + 앞으로 숙임 (멀고 낮을수록)
   p.spineZ = lerp(p.spineZ, -Math.sign(rx || side) * (0.12 + 0.38 * far), w);
   p.spineX = lerp(p.spineX, -0.35 - 0.35 * low - 0.2 * far * Math.max(0, rf / Math.max(dist, 0.01)), w);
   p.spineY = lerp(p.spineY, st.hand === 'fore' ? -0.1 : 0.45, w);
-  // 다리: 공 쪽 다리가 공 방향으로 런지, 반대 다리는 뒤로 뻗어 무게중심
-  const lead = p.legs[side > 0 ? 1 : 0];
-  const back = p.legs[side > 0 ? 0 : 1];
-  const fwdK = Math.max(-0.3, rf / Math.max(dist, 0.01));
-  const latK = Math.abs(rx) / Math.max(dist, 0.01);
-  lead.pitch = lerp(lead.pitch, 0.35 + (0.55 + 0.3 * fwdK) * (0.4 + 0.6 * far), w);
-  lead.roll = lerp(lead.roll, side * (0.15 + 0.5 * latK * far), w);
-  lead.knee = lerp(lead.knee, 0.9 + 0.5 * far + 0.5 * low, w);
-  back.pitch = lerp(back.pitch, -0.2 - 0.35 * far, w);
-  back.roll = lerp(back.roll, -side * 0.08, w);
-  back.knee = lerp(back.knee, 0.45 + 0.6 * low, w);
-  p.yaw = lerp(p.yaw, 0, w);
 }
 
 const _v = new THREE.Vector3();
@@ -537,7 +802,8 @@ function solveArmIK(ch: Character, st: AnimState): void {
     // 모자란 만큼 (최대 0.35m) 몸을 공 쪽 수평으로 내딛음
     _v.set(_T.x - _S.x, 0, _T.z - _S.z).normalize().multiplyScalar(Math.min(0.35, short) * w);
     ch.lunge.copy(_v);
-    ch.root.position.add(_v);
+    ch.pelvis.position.x += _v.x * Math.cos(ch.root.rotation.y) - _v.z * Math.sin(ch.root.rotation.y);
+    ch.pelvis.position.z += _v.x * Math.sin(ch.root.rotation.y) + _v.z * Math.cos(ch.root.rotation.y);
     ch.root.updateMatrixWorld(true);
     sh.getWorldPosition(_S);
   }
@@ -581,34 +847,19 @@ function solveArmIK(ch: Character, st: AnimState): void {
 }
 
 function blend(cur: Pose, tgt: Pose, k: number): void {
-  cur.yaw = lerp(cur.yaw, tgt.yaw, k);
   cur.spineX = lerp(cur.spineX, tgt.spineX, k);
   cur.spineY = lerp(cur.spineY, tgt.spineY, k);
   cur.spineZ = lerp(cur.spineZ, tgt.spineZ, k);
-  for (let i = 0; i < 2; i++) {
-    cur.legs[i].pitch = lerp(cur.legs[i].pitch, tgt.legs[i].pitch, k);
-    cur.legs[i].roll = lerp(cur.legs[i].roll, tgt.legs[i].roll, k);
-    cur.legs[i].knee = lerp(cur.legs[i].knee, tgt.legs[i].knee, k);
-  }
   for (const key of ['x', 'y', 'z', 'elbow', 'wrist'] as const) cur.armR[key] = lerp(cur.armR[key], tgt.armR[key], k);
   for (const key of ['x', 'z', 'elbow'] as const) cur.armL[key] = lerp(cur.armL[key], tgt.armL[key], k);
 }
 
-/** 포즈를 관절에 적용하고, 디딘 발이 바닥에 닿도록 골반 높이를 맞춘다 */
-function applyPose(ch: Character): void {
+/** 상체 포즈를 관절에 적용 */
+function applyUpper(ch: Character): void {
   const p = ch.pose;
-  ch.root.rotation.y = p.yaw;
-  let reach = 0;
-  ch.legs.forEach((leg, i) => {
-    const L = p.legs[i];
-    leg.hip.rotation.set(L.pitch, 0, L.roll);
-    leg.knee.rotation.x = -L.knee;
-    leg.foot.rotation.x = -(L.pitch - L.knee); // 발바닥은 바닥과 평행
-    const ext = (THIGH * Math.cos(L.pitch) + SHIN * Math.cos(L.pitch - L.knee)) * Math.cos(L.roll);
-    reach = Math.max(reach, ext);
-  });
-  ch.pelvis.position.y = reach + FOOT_H + 0.02;
-  ch.spine.rotation.set(p.spineX, p.spineY, p.spineZ, 'YXZ');
+  const L = ch.loco;
+  // 가속 기울기: 골반이 절반, 척추가 절반 (앞 + → 앞으로 숙임)
+  ch.spine.rotation.set(p.spineX - L.leanF * 0.55, p.spineY - L.hipY, p.spineZ - L.leanS * 0.6, 'YXZ');
   const R = p.armR;
   ch.armR.shoulder.rotation.set(R.x, R.y, R.z, 'YXZ');
   ch.armR.elbow.rotation.x = R.elbow;
@@ -618,13 +869,188 @@ function applyPose(ch: Character): void {
   ch.armL.elbow.rotation.x = A.elbow;
 }
 
-/** 프레임마다 호출: 목표 자세로 부드럽게 블렌딩 (스윙 중엔 빠르게). 히트스톱 중엔 그대로 멈춤. */
-export function animateCharacter(ch: Character, dt: number, st: AnimState): void {
+/**
+ * 프레임마다 호출.
+ * 1) 속도 변화로 가속도를 구해 몸을 기울이고(출발: 앞으로 쏠림, 급정지: 뒤로 버팀 → 스프링으로 한 번 출렁이고 자리 잡음)
+ * 2) 발을 월드에 디딘 채 필요할 때만 내딛게 하고 다리는 IK로 그 발에 맞춤
+ * 3) 상체는 목표 자세로 블렌딩, 스윙·임팩트 IK는 그 위에.
+ * 히트스톱 중엔 그대로 멈춤.
+ */
+export function animateCharacter(ch: Character, dtIn: number, st: AnimState): void {
   if (st.frozen && !st.snap) return;
-  const tgt = targetPose(ch, dt, st);
-  const rate = st.swing !== null ? 40 : 16;
+  const L = ch.loco;
+  const dt = Math.min(dtIn, 1 / 30);
+  const root = ch.root;
+
+  // 처음이거나 순간이동(새 랠리 배치 등)이면 발을 제자리로
+  const jumped = Math.hypot(root.position.x - L.lastX, root.position.z - L.lastZ) > 1.2;
+  if (!L.init || jumped) {
+    L.init = true;
+    L.yaw = 0;
+    root.rotation.y = 0;
+    L.feet.forEach((ft, i) => {
+      [ft.x, ft.z] = toWorld(ch, 0, i === 0 ? -STANCE_W : STANCE_W, 0);
+      ft.air = false;
+      ft.h = 0;
+    });
+    L.vx = st.vx;
+    L.vz = st.vz;
+  }
+  L.lastX = root.position.x;
+  L.lastZ = root.position.z;
+
+  if (dt > 0) {
+    // 가속도 (살짝 거른 값)
+    const k = 1 - Math.exp(-dt / 0.04);
+    L.ax += ((st.vx - L.vx) / dt - L.ax) * k;
+    L.az += ((st.vz - L.vz) / dt - L.az) * k;
+    L.vx = st.vx;
+    L.vz = st.vz;
+  }
+  const speed = Math.hypot(st.vx, st.vz);
+  const run = clamp(speed / (st.maxSpeed * 0.6), 0, 1);
+
+  // 스윙 시작 순간의 기세를 기억 (서서 친 건지, 달려오며 친 건지)
+  const swinging = st.swing !== null;
+  if (swinging && !L.wasSwing) {
+    L.swingMom = clamp(speed / (st.maxSpeed * 0.75), 0, 1);
+    const [dx, df] = toLocal(ch, L.yaw, root.position.x + st.vx, root.position.z + st.vz);
+    const n = Math.hypot(dx, df) || 1;
+    L.swingDirX = dx / n;
+    L.swingDirF = df / n;
+  }
+  L.wasSwing = swinging;
+
+  // 몸 방향: 크게 앞/옆으로 달릴 때만 진행 방향으로 돌림 (뒤로는 앞벽을 보며 백페달). 스윙·준비 땐 앞벽 쪽
+  let heading = Math.atan2(-st.vx, -st.vz);
+  if (heading > Math.PI / 2) heading -= Math.PI;
+  if (heading < -Math.PI / 2) heading += Math.PI;
+  const face = swinging ? 0 : 1 - (st.prep ?? 0) * 0.8;
+  const yawT = clamp(heading, -0.7, 0.7) * run * face;
+  L.yaw += (yawT - L.yaw) * (1 - Math.exp(-10 * dt));
+  root.rotation.y = L.yaw;
+
+  // 로컬 속도·가속 (앞 +, 오른쪽 +)
+  const [vxL, vfL] = toLocal(ch, L.yaw, root.position.x + st.vx, root.position.z + st.vz);
+  const [axL, afL] = toLocal(ch, L.yaw, root.position.x + L.ax, root.position.z + L.az);
+  const fwd = speed > 0.05 ? vfL / speed : 0;
+  const lat = speed > 0.05 ? vxL / speed : 0;
+  // 브레이크 정도: 가속이 진행 반대 방향일 때
+  const braking = speed > 0.3 ? clamp(-(axL * vxL + afL * vfL) / speed / 30, 0, 1) : 0;
+
+  // 기울기 스프링: 가속에 비례 + 달리는 동안 앞으로 살짝 (전력질주 자세)
+  // 급정지 감지: 빠르게 달리다(최근 3m/s 이상) 세게 감속하면 정지 전환 시작
+  L.recentSpeed = Math.max(speed, L.recentSpeed - dt * 8);
+  if (braking > 0.5 && L.recentSpeed > 3 && L.stopK < 0.2) {
+    const k = clamp((L.recentSpeed - 2) / 4.5, 0.35, 1);
+    L.stopK = k;
+    const n = Math.hypot(vxL, vfL) || 1;
+    L.stopX = vxL / n;
+    L.stopF = vfL / n;
+    // 버티며 뒤로 젖혀짐 + 낮게 눌림 (스프링이 이후 앞으로 한 번 출렁이고 자리 잡게 함)
+    L.leanFv -= 3.2 * k * L.stopF;
+    L.leanSv -= 2.6 * k * L.stopX;
+    L.dropV -= 1.4 * k;
+  }
+  L.stopK = Math.max(0, L.stopK - dt / 0.45);
+  // 가속은 기울기 스프링에 '힘'으로 들어감: 짧은 급정지(0.14초)도 몸이 크게 뒤로 버텼다가 앞으로 한 번 출렁이고 자리 잡음
+  const leanFT = 0.3 * run * Math.max(0, fwd) - 0.06 * run * Math.max(0, -fwd) + 0.05 * run * Math.abs(lat);
+  const leanST = 0.12 * run * lat;
+  L.leanFv += clamp(afL, -60, 60) * 0.8 * dt;
+  L.leanSv += clamp(axL, -60, 60) * 0.6 * dt;
+  [L.leanF, L.leanFv] = spring(L.leanF, L.leanFv, leanFT, 11, 0.38, dt);
+  [L.leanS, L.leanSv] = spring(L.leanS, L.leanSv, leanST, 11, 0.42, dt);
+  L.leanF = clamp(L.leanF, -0.5, 0.55);
+  L.leanS = clamp(L.leanS, -0.4, 0.4);
+
+  // 스윙 하체: 칠 쪽 발, 공 방향·거리
+  const lead = st.hand === 'fore' ? 1 : 0;
+  let swingW = 0;
+  let reach = { x: lead === 1 ? 0.8 : -0.8, f: 0.3, far: 0.3 };
+  let low = 0;
+  if (st.contact && st.contact.w > 0) {
+    const [bx, bf] = toLocal(ch, L.yaw, st.contact.ball.x, st.contact.ball.z);
+    reach = { x: bx, f: bf, far: clamp((Math.hypot(bx, bf) - 0.45) / 0.9, 0, 1) };
+    low = clamp((1.0 - st.contact.ball.y) / 0.8, 0, 1);
+  }
+  if (swinging) {
+    const s = st.swing!;
+    // 임팩트 직전부터 내딛고, 팔로스루 끝무렵 풀림
+    swingW = s < SWING_CONTACT ? smooth(clamp(s / SWING_CONTACT, 0, 1)) : 1 - smooth(clamp((s - 0.75) / 0.25, 0, 1));
+  }
+
+  // 발 디딤
+  const homes = footHomes(ch, st, run, swingW, lead, reach);
+  if (dt > 0) stepFeet(ch, dt, homes, speed, braking, swingW);
+
+  // 골반 높이: 준비(낮게) ↔ 달리기(조금 높게), 스윙 런지·낮은 공이면 더 낮게, 착지·브레이크 충격 스프링
+  const prep = st.swing === null ? (st.prep ?? 0) : 0;
+  const baseY = lerp(READY_Y, RUN_Y, run) - 0.05 * prep - (0.08 + 0.1 * low + 0.06 * reach.far) * swingW;
+  if (dt > 0) {
+    L.dropV -= braking * 3 * dt; // 브레이크 중 계속 눌러 앉음
+    [L.drop, L.dropV] = spring(L.drop, L.dropV, 0, 16, 0.38, dt);
+  }
+  // 체중 이동: 스윙 무게(뒷발 → 앞발)를 따라 골반이 칠 쪽 발 위로
+  let shiftX = 0;
+  let shiftF = 0;
+  let hipY = 0;
+  if (swinging) {
+    const k = swingKey(st.hand === 'fore' ? FORE : BACK, st.swing!);
+    const [lx, lf2] = toLocal(ch, L.yaw, L.feet[lead].x, L.feet[lead].z);
+    const [bx, bf] = toLocal(ch, L.yaw, L.feet[1 - lead].x, L.feet[1 - lead].z);
+    const mid = 0.5;
+    const wgt = lerp(mid, k.weight, swingW);
+    shiftX = lerp(bx, lx, wgt) * 0.75;
+    shiftF = lerp(bf, lf2, wgt) * 0.75;
+    hipY = k.hipY * swingW;
+  } else if (prep > 0) {
+    hipY = (st.hand === 'fore' ? -0.3 : 0.35) * prep;
+  }
+  const ks = 1 - Math.exp(-14 * dt);
+  L.shiftX += (shiftX - L.shiftX) * ks;
+  L.shiftZ += (shiftF - L.shiftZ) * ks;
+  L.hipY += (hipY - L.hipY) * ks;
+  // 브레이크: 엉덩이가 뒤로 빠지며 버팀
+  const sitBack = -0.16 * braking;
+  const stopEnv = L.stopK > 0 ? Math.sin(Math.PI * Math.min(1, (1 - L.stopK) * 1.6 + 0.15)) * L.stopK : 0;
+
+  // 골반 배치 (루트 로컬)
+  const pelvis = ch.pelvis;
+  let py = baseY + L.drop - 0.1 * stopEnv;
+  pelvis.position.set(L.shiftX - L.stopX * 0.1 * stopEnv, py, -(L.shiftZ + sitBack - L.stopF * 0.1 * stopEnv));
+  pelvis.rotation.set(-L.leanF * 0.45, L.hipY, -L.leanS * 0.4, 'YXZ');
+  // 다리가 닿도록 골반을 낮춤 (디딘 발 기준)
+  root.updateMatrixWorld(true);
+  pelvis.getWorldPosition(_T);
+  for (let i = 0; i < 2; i++) {
+    const ft = L.feet[i];
+    ch.legs[i].hip.getWorldPosition(_S);
+    const dh = Math.hypot(_S.x - ft.x, _S.z - ft.z);
+    // 뒤로 빠진 채 곧 떼어질 발은 골반을 끌어내리지 않음 (다리가 쭉 펴지고 발끝이 떠서 차고 나가는 모양)
+    if (dh > 0.42 && speed > 2) continue;
+    // 엉덩관절 → 발목 거리가 다리 길이를 넘지 않게
+    const maxY = FOOT_H + ft.h + Math.sqrt(Math.max(0.04, (LEG - 0.03) ** 2 - dh * dh)) - (_S.y - _T.y);
+    if (py > maxY) py = maxY;
+  }
+  py = Math.max(0.6, py);
+  pelvis.position.y = py;
+  L.pelvisY = py;
+
+  // 상체
+  const tgt = targetPose(ch, dt, st, run);
+  const rate = swinging ? 40 : 16;
   blend(ch.pose, tgt, st.snap ? 1 : 1 - Math.exp(-rate * dt));
-  applyPose(ch);
+  applyUpper(ch);
+
+  // 다리 IK (발목 목표 = 디딘 발 + 높이). 발끝: 걸음 중엔 차고 나가며 살짝 듦
+  root.updateMatrixWorld(true);
+  for (let i = 0; i < 2; i++) {
+    const ft = L.feet[i];
+    const toe = ft.air ? -0.35 * Math.sin(Math.PI * ft.t) * (0.5 + 0.5 * run) : 0;
+    _v.set(ft.x, FOOT_H + ft.h, ft.z);
+    solveLeg(ch, i, _v, 0, toe);
+  }
+
   ch.lunge.set(0, 0, 0);
   if (st.contact && st.contact.w > 0) solveArmIK(ch, st);
 }

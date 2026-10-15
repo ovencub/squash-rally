@@ -103,6 +103,8 @@ interface Athlete {
   contact: { ball: THREE.Vector3; aim: THREE.Vector3; w: number } | null;
   /** 새 임팩트: 다음 프레임에 히트스톱 중이어도 자세를 즉시 맞춤 */
   snap: boolean;
+  /** 준비 동작 중 예상 타점 (애니메이션이 미리 그쪽으로 내딛음) */
+  aimBall: THREE.Vector3;
 }
 
 /**
@@ -201,7 +203,7 @@ export class Game {
   }
 
   private makeAthlete(id: PlayerId, shirt: number, trim: number, x: number, z: number): Athlete {
-    return { id, mover: createMover(x, z), ch: createCharacter(shirt, trim), swingAnim: null, swingHand: 'fore', swingCooldown: 0, target: null, stepAcc: 0, contact: null, snap: false };
+    return { id, mover: createMover(x, z), ch: createCharacter(shirt, trim), swingAnim: null, swingHand: 'fore', swingCooldown: 0, target: null, stepAcc: 0, contact: null, snap: false, aimBall: new THREE.Vector3() };
   }
 
   private objects(): THREE.Object3D[] {
@@ -444,13 +446,13 @@ export class Game {
     const hasInput = !locked && (this.moveInput.x !== 0 || this.moveInput.z !== 0);
     const target = !locked && !hasInput && tuning.debug.autoplay && this.ring ? standSpotFor(this.ring.point, this.playerPos, w.court) : null;
     const ratio = this.settings.moveSpeed / tuning.player.maxSpeed;
-    if (moveStep(this.A.mover, realDt, w.court, hasInput ? this.moveInput : null, target, ratio)) sfx.play('squeak', tuning.audio.squeakVol);
+    if (moveStep(this.A.mover, realDt, w.court, hasInput ? this.moveInput : null, target, ratio) && tuning.audio.moveSounds) sfx.play('squeak', tuning.audio.squeakVol);
     this.footsteps(this.A, realDt, 1);
 
     // AI: 기본 이동 속도 × 난이도 비율 (사람과 같은 이동 모델)
     if (this.B && this.mode === 'match') {
       const t = locked ? null : this.B.target;
-      if (moveStep(this.B.mover, realDt, w.court, null, t, tuning.ai.level[this.difficulty].speedRatio)) sfx.play('squeak', tuning.audio.squeakVol * 0.6);
+      if (moveStep(this.B.mover, realDt, w.court, null, t, tuning.ai.level[this.difficulty].speedRatio) && tuning.audio.moveSounds) sfx.play('squeak', tuning.audio.squeakVol * 0.6);
       this.footsteps(this.B, realDt, 0.5);
       this.separate();
     } else if (this.B && this.remote) {
@@ -478,7 +480,7 @@ export class Game {
     a.stepAcc += speed * dt;
     if (a.stepAcc >= tuning.audio.stepStride) {
       a.stepAcc = 0;
-      sfx.play('step', vol * Math.min(1, 0.3 + speed / 8));
+      if (tuning.audio.moveSounds) sfx.play('step', vol * Math.min(1, 0.3 + speed / 8));
     }
   }
 
@@ -653,11 +655,17 @@ export class Game {
       }
       // 공이 다가오면 칠 손 쪽으로 미리 라켓을 뺌 (준비 동작)
       let prep = 0;
+      let aim: THREE.Vector3 | null = null;
       const turn = b && w.rally.phase === 'returning' && (a === this.A ? this.myTurn() : w.rally.lastHitter === this.me);
       if (turn && a.swingAnim === null) {
         const d = Math.hypot(b!.pos.x - a.mover.x, b!.pos.z - a.mover.z);
         prep = Math.max(0, Math.min(1, (2.8 - d) / 1.3));
-        if (prep > 0) a.swingHand = handFor(b!.pos, { x: a.mover.x });
+        if (prep > 0) {
+          a.swingHand = handFor(b!.pos, { x: a.mover.x });
+          // 예상 타점: 내 쪽은 타이밍 링 지점, 상대는 지금 공 위치. 손이 닿을 만한 거리일 때만 미리 내딛음
+          const pt = a === this.A && this.ring ? this.ring.point : b!.pos;
+          if (Math.hypot(pt.x - a.mover.x, pt.z - a.mover.z) < 1.6) aim = a.aimBall.set(pt.x, pt.y, pt.z);
+        }
       }
       // 임팩트 IK 영향도: 히트스톱이 끝나면 팔로스루 동안 서서히 0으로
       if (a.contact && !frozen && !this.paused && !a.snap) {
@@ -678,6 +686,7 @@ export class Game {
         contact: a.contact,
         prep,
         snap: a.snap,
+        aimBall: aim,
       });
       a.snap = false;
     }

@@ -13,6 +13,7 @@
 - `npm run e2e` — Playwright 스크린샷/FPS (`tests/e2e/`, 결과는 `test-results/`). `online.spec.ts`는 브라우저 2개를 실제 PeerJS로 연결하므로 인터넷 필요
 - `npm run e2e:prod` — 배포 빌드(vite preview)로 크롬·파이어폭스·웹킷 스모크 테스트 (`tests/prod/`)
 - `npm run build` / `npm run preview`
+- 애니메이션 확인: `npx playwright test animlab` → `test-results/anim/*.png` 프레임 시트 (`ANIM_ONLY=runStop ANIM_EVERY=2 ANIM_VIEWS=side,diag,back`). 사운드 비교: `?sfxlab`
 - 디자인 리소스 가공: `python scripts/build_design.py` → `node scripts/build-og.mjs` (로고·파비콘·공유 썸네일)
 - 배포: `main`에 push하면 `.github/workflows/deploy.yml`이 Pages에 배포
 

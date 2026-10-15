@@ -671,6 +671,8 @@ if (roomParam) {
 // 사운드 비교 페이지: ?sfxlab
 if (new URLSearchParams(location.search).has('sfxlab'))
   void import('./debug/sfxlab').then((m) => m.openSfxLab(() => history.replaceState(null, '', location.pathname)));
+// 애니메이션 확인 페이지: ?animlab (e2e가 시트를 렌더)
+if (new URLSearchParams(location.search).has('animlab')) void import('./debug/animlab');
 requestAnimationFrame(frame);
 // 첫 프레임이 그려지고 폰트가 준비되면 로딩 화면을 걷는다
 void document.fonts.ready.then(() =>

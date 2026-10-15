@@ -177,6 +177,9 @@ export const tuning = {
     // (실측 랠리: 앞벽 중앙값 18m/s, 옆벽 4~10, 바닥 2~7)
     impactFullSpeed: { front: 22, tin: 22, left: 11, right: 11, back: 11, floor: 7.5 },
     squeakVol: 0.45, // 신발 스퀵 (공 소리보다 작게)
+    // 이동 소리(발소리·신발 스퀵). 사용자 피드백: WASD를 누를 때 나는 소리는 빼고 조작 표시는 시각적으로만 → 끔.
+    // 나중에 실제 경기 레퍼런스로 다시 만들면 켤 것
+    moveSounds: false,
     // M5: 큰 돔 체육관 잔향
     reverb: 0.55, // 잔향 출력 크기 (0 = 없음)
     reverbSeconds: 2.8, // 예전 돔 잔향 길이 (RT60) — 사운드 비교 페이지의 옛 버전용
