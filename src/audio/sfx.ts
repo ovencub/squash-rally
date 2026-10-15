@@ -39,22 +39,20 @@ interface Patch {
   eq?: Eq[];
 }
 // 라켓 타격: 실제 타격음은 380Hz 대역이 가장 크고 60~150Hz는 -5dB, 2kHz 위는 빠르게 감소
-const RACKET_EQ: Eq[] = [
-  ['highpass', 110, 0, 0.9],
-  ['highpass', 110, 0, 0.9],
-  ['peaking', 400, 7, 1.1],
-  ['peaking', 150, -7, 1.4],
-  ['peaking', 240, -4, 1.5],
-  ['highshelf', 3000, -6],
+// 고무공 피드백: 2.5kHz 위 날카로운 성분은 깎고, 아주 낮은 웅웅거림만 정리 (몸통 100~400Hz는 살림)
+const DULL_EQ: Eq[] = [
+  ['highpass', 450, 0, 0.7], // 원본의 웅웅거리는 저음 제거 (몸통은 합성 레이어가 담당)
+  ['lowpass', 2400, 0, 0.7],
+  ['highshelf', 1600, -3],
 ];
 const BANK: Record<SfxName, Patch> = {
-  hit_soft: { file: 0.85, layer: ['body_racket', 0.6], wet: 0.35, rate: 1.05, eq: RACKET_EQ },
-  hit_hard: { file: 1, layer: ['body_racket', 0.75], wet: 0.42, rate: 0.97, eq: RACKET_EQ },
-  hit_perfect: { file: 1, layer: ['body_racket', 0.95], wet: 0.5, rate: 0.93, eq: RACKET_EQ },
-  bounce_front: { file: 0.35, layer: ['wall_boom', 1.0], wet: 0.45, rate: 0.9, eq: [['highpass', 200, 0, 0.7]] },
-  bounce_side: { file: 0.3, layer: ['wall_boom', 0.6], wet: 0.4, rate: 0.95, eq: [['highpass', 200, 0, 0.7]] },
-  bounce_glass: { file: 0.35, layer: ['glass_thunk', 0.9], wet: 0.4 },
-  bounce_floor: { file: 0.7, wet: 0.3, rate: 1.1 },
+  hit_soft: { file: 0.12, layer: ['rubber_hit', 0.9], wet: 0.3, rate: 1.06, eq: DULL_EQ },
+  hit_hard: { file: 0.14, layer: ['rubber_hit', 1.0], wet: 0.36, rate: 1.0, eq: DULL_EQ },
+  hit_perfect: { file: 0.16, layer: ['rubber_hit_perfect', 1.1], wet: 0.42, rate: 0.96, eq: DULL_EQ },
+  bounce_front: { file: 0.14, layer: ['rubber_wall', 1.0], wet: 0.4, rate: 1.0, eq: DULL_EQ },
+  bounce_side: { file: 0.11, layer: ['rubber_wall', 0.75], wet: 0.35, rate: 1.05, eq: DULL_EQ },
+  bounce_glass: { file: 0.05, layer: ['rubber_glass', 0.9], wet: 0.35, eq: DULL_EQ },
+  bounce_floor: { file: 0.3, layer: ['rubber_floor', 0.95], wet: 0.25, rate: 1.0, eq: DULL_EQ },
   tin: { file: 1, layer: ['tin', 0.5], wet: 0.55 },
   squeak: { file: 0, wet: 0.4 },
   step: { file: 0.5, wet: 0.22 },
@@ -263,7 +261,9 @@ class Sfx {
       src.playbackRate.value = p * (patch.rate ?? 1);
       const g = ctx.createGain();
       g.gain.value = v * patch.file;
-      src.connect(applyEq(ctx, patch.eq, g)).connect(node);
+      // 소스 → EQ 체인 → 볼륨(g) → 출력. (예전엔 EQ 첫 단을 출력에 바로 이어 볼륨·나머지 EQ가 빠지는 버그가 있었음)
+      src.connect(applyEq(ctx, patch.eq, g));
+      g.connect(node);
       src.start(t);
       if (patch.layer) SYNTH[patch.layer[0]]?.(ctx, node, t, v * patch.layer[1], p);
     } else {
@@ -285,20 +285,25 @@ class Sfx {
   readonly names = Object.keys(BANK) as SfxName[];
 
   /** 검증용: 잔향 없이 소리 하나를 오프라인으로 렌더링 (모노 44.1kHz 샘플 배열) */
-  async renderDry(name: SfxName, seconds = 0.5): Promise<Float32Array> {
+  async renderDry(name: SfxName, seconds = 0.5, parts: 'both' | 'file' | 'layer' = 'both'): Promise<Float32Array> {
     const off = new OfflineAudioContext(1, Math.floor(44100 * seconds), 44100);
     const patch = BANK[name];
     const bufs = this.buffers.get(name);
     const t = 0.01;
     if (patch.file > 0 && bufs?.length) {
+      if (parts === 'layer') {
+        if (patch.layer) SYNTH[patch.layer[0]]?.(off as unknown as AudioContext, off.destination, t, patch.layer[1], 1);
+        return (await off.startRendering()).getChannelData(0);
+      }
       const src = off.createBufferSource();
       src.buffer = bufs[0];
       src.playbackRate.value = patch.rate ?? 1;
       const g = off.createGain();
       g.gain.value = patch.file;
-      src.connect(applyEq(off, patch.eq, g)).connect(off.destination);
+      src.connect(applyEq(off, patch.eq, g));
+      g.connect(off.destination);
       src.start(t);
-      if (patch.layer) SYNTH[patch.layer[0]]?.(off as unknown as AudioContext, off.destination, t, patch.layer[1], 1);
+      if (patch.layer && parts === 'both') SYNTH[patch.layer[0]]?.(off as unknown as AudioContext, off.destination, t, patch.layer[1], 1);
     } else SYNTH[name]?.(off as unknown as AudioContext, off.destination, t, 1, 1);
     return (await off.startRendering()).getChannelData(0);
   }

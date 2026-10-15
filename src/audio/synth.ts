@@ -43,6 +43,36 @@ export function makeImpulse(ctx: AudioContext, seconds = 2.8, preDelay = 0.03): 
   return buf;
 }
 
+/** 감쇠 사인 모드 + 피치 하강 (고무가 눌렸다 펴지며 음이 살짝 내려감) */
+function modeDrop(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0: number, f1: number, decay: number, attack = 0.002) {
+  const o = ctx.createOscillator();
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + decay * 2);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay * 4.6);
+  o.connect(g).connect(out);
+  o.start(t);
+  o.stop(t + attack + decay * 4.6 + 0.02);
+}
+
+/** 대역 노이즈 '퍽' (어택을 살짝 둥글게 → 날카로운 딸깍이 아니라 고무가 눌리는 소리) */
+function thud(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, q: number, decay: number, attack = 0.0025) {
+  const src = ctx.createBufferSource();
+  src.buffer = noise(ctx);
+  const f = ctx.createBiquadFilter();
+  f.type = 'bandpass';
+  f.frequency.value = freq;
+  f.Q.value = q;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = Math.min(2400, freq * 3);
+  src.connect(f).connect(lp).connect(env(ctx, out, t, vol, attack, decay));
+  src.start(t);
+  src.stop(t + attack + decay + 0.05);
+}
+
 /** 감쇠 사인 모드 (모달 합성) */
 function mode(ctx: AudioContext, out: AudioNode, t: number, vol: number, freq: number, decay: number) {
   const o = ctx.createOscillator();
@@ -114,6 +144,42 @@ function tone(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0: num
 }
 
 export const SYNTH: Record<string, Synth> = {
+  // ── 고무공 레이어 (피드백: 고무공을 세게 때리는 둔탁하고 묵직한 소리) ──
+  // 낮은 '쿵' + 속 빈 고무공 공진(피치가 살짝 떨어짐) + 중음 '퍽'. 2.5kHz 위 날카로운 성분은 거의 없음.
+  rubber_hit: (c, o, t, v, p) => {
+    modeDrop(c, o, t, v * 0.05, 155 * p, 95 * p, 0.03, 0.0015); // 낮은 '쿵'
+    modeDrop(c, o, t, v * 0.07, 380 * p, 290 * p, 0.022, 0.0015); // 속 빈 고무공 몸통
+    modeDrop(c, o, t, v * 0.12, 640 * p, 520 * p, 0.018, 0.0015); // 고무 공진
+    thud(c, o, t, v * 1.1, 950 * p, 0.85, 0.085, 0.0018); // 중음 '퍽'
+    mode(c, o, t, v * 0.05, 1300 * p, 0.007); // 줄 소리 아주 살짝
+  },
+  rubber_hit_perfect: (c, o, t, v, p) => {
+    modeDrop(c, o, t, v * 0.07, 140 * p, 85 * p, 0.036, 0.0015);
+    modeDrop(c, o, t, v * 0.08, 360 * p, 270 * p, 0.026, 0.0015);
+    modeDrop(c, o, t, v * 0.13, 620 * p, 500 * p, 0.02, 0.0015);
+    thud(c, o, t, v * 1.2, 900 * p, 0.8, 0.1, 0.0018);
+    mode(c, o, t, v * 0.06, 1250 * p, 0.008);
+  },
+  // 벽(시멘트·석고): 고무공이 벽을 '퍽' — 낮게 울리는 몸통 + 짧은 중음
+  rubber_wall: (c, o, t, v, p) => {
+    modeDrop(c, o, t, v * 0.05, 125 * p, 80 * p, 0.035, 0.002);
+    modeDrop(c, o, t, v * 0.07, 280 * p, 220 * p, 0.028, 0.002);
+    thud(c, o, t, v * 1.1, 520 * p, 0.8, 0.1, 0.0025);
+    mode(c, o, t, v * 0.03, 70 * p, 0.06); // 벽 전체가 울리는 낮은 붐
+  },
+  // 마룻바닥: 짧고 낮은 '텁'
+  rubber_floor: (c, o, t, v, p) => {
+    modeDrop(c, o, t, v * 0.14, 115 * p, 75 * p, 0.025, 0.002);
+    thud(c, o, t, v * 0.9, 400 * p, 1.0, 0.06, 0.002);
+    mode(c, o, t, v * 0.12, 560 * p, 0.012); // 나무 노크 살짝
+  },
+  // 유리 뒷벽: 둔탁한 '텅' + 유리 울림 아주 약하게
+  rubber_glass: (c, o, t, v, p) => {
+    modeDrop(c, o, t, v * 0.6, 150 * p, 105 * p, 0.03, 0.002);
+    thud(c, o, t, v * 0.9, 460 * p, 0.9, 0.08, 0.002);
+    mode(c, o, t, v * 0.05, 1150 * p, 0.04);
+    mode(c, o, t, v * 0.015, 2600 * p, 0.03);
+  },
   // ── 파일 음원에 겹치는 레이어 (실제 스쿼시 영상 분석값 기반) ──
   // 라켓 타격 몸통: 470/355/97Hz 주성분 + 1kHz·1.5kHz 배음, -20dB까지 약 20ms
   body_racket: (c, o, t, v, p) => {

@@ -6,24 +6,26 @@
 
 | 사용 파일명 (`public/sfx/`, .ogg + .m4a) | 원본 이름 | 출처 URL | 작성자 | 라이선스 |
 |---|---|---|---|---|
-| `hit_soft_0` | impact-sounds/Audio/impactPlate_light_001.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `hit_soft_1` | impact-sounds/Audio/impactPlate_light_003.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `hit_soft_2` | impact-sounds/Audio/impactPlate_light_004.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `hit_hard_0` | impact-sounds/Audio/impactPlate_medium_000.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `hit_hard_1` | impact-sounds/Audio/impactPlate_medium_001.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `hit_hard_2` | impact-sounds/Audio/impactPlate_medium_002.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `hit_perfect_0` | impact-sounds/Audio/impactPlate_medium_003.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `hit_perfect_1` | impact-sounds/Audio/impactPlate_medium_004.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `bounce_front_0` | impact-sounds/Audio/impactPlate_light_000.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `bounce_front_1` | impact-sounds/Audio/impactPlate_light_002.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `bounce_side_0` | impact-sounds/Audio/impactPlate_light_002.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `bounce_side_1` | impact-sounds/Audio/impactPlate_light_004.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `hit_soft_0` | impact-sounds/Audio/impactPunch_heavy_000.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `hit_soft_1` | impact-sounds/Audio/impactPunch_heavy_001.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `hit_soft_2` | impact-sounds/Audio/impactPunch_heavy_004.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `hit_hard_0` | impact-sounds/Audio/impactPunch_heavy_000.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `hit_hard_1` | impact-sounds/Audio/impactPunch_heavy_001.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `hit_hard_2` | impact-sounds/Audio/impactPunch_heavy_003.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `hit_hard_3` | impact-sounds/Audio/impactPunch_heavy_004.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `hit_perfect_0` | impact-sounds/Audio/impactPunch_heavy_003.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `hit_perfect_1` | impact-sounds/Audio/impactPunch_heavy_000.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `bounce_front_0` | impact-sounds/Audio/impactSoft_heavy_000.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `bounce_front_1` | impact-sounds/Audio/impactSoft_heavy_002.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `bounce_front_2` | impact-sounds/Audio/impactSoft_heavy_004.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `bounce_side_0` | impact-sounds/Audio/impactSoft_heavy_001.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `bounce_side_1` | impact-sounds/Audio/impactSoft_heavy_003.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
 | `bounce_glass_0` | impact-sounds/Audio/impactGlass_light_000.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
 | `bounce_glass_1` | impact-sounds/Audio/impactGlass_light_001.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
 | `bounce_glass_2` | impact-sounds/Audio/impactGlass_light_002.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `bounce_floor_0` | impact-sounds/Audio/impactWood_light_000.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `bounce_floor_1` | impact-sounds/Audio/impactWood_light_001.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
-| `bounce_floor_2` | impact-sounds/Audio/impactWood_light_002.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `bounce_floor_0` | impact-sounds/Audio/impactSoft_medium_000.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `bounce_floor_1` | impact-sounds/Audio/impactSoft_medium_001.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
+| `bounce_floor_2` | impact-sounds/Audio/impactSoft_medium_004.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
 | `tin_0` | impact-sounds/Audio/impactTin_medium_000.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
 | `tin_1` | impact-sounds/Audio/impactTin_medium_001.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
 | `tin_2` | impact-sounds/Audio/impactTin_medium_002.ogg | https://kenney.nl/assets/impact-sounds | Kenney (www.kenney.nl) | CC0 1.0 |
@@ -45,9 +47,8 @@
 
 | 소리 | 구현 | 비고 |
 |---|---|---|
-| 라켓 타격 몸통 레이어 (`hit_*`에 겹침) | `src/audio/synth.ts` `body_racket` | 실제 스쿼시 타격음 분석값(470·355·97Hz, 1·1.5kHz 배음, -20dB 감쇠 약 20ms)으로 만든 모달 합성 |
-| 앞벽/옆벽 저음 붐 레이어 | `wall_boom` | 실제 경기 영상의 앞벽 저음(86~130Hz) 분석값 기반 |
-| 유리 뒷벽 둔탁음 레이어 | `glass_thunk` | 임시 합성음 |
+| 라켓 타격 고무공 레이어 (`hit_*`의 주 소리) | `src/audio/synth.ts` `rubber_hit`, `rubber_hit_perfect` | 고무공 피드백: 낮은 '쿵' + 속 빈 고무공 공진(피치 하강) + 중음 '퍽'. 스펙트럼 중심 약 600Hz, 2.5kHz 이상 2% 미만 |
+| 벽·바닥·유리 고무공 레이어 | `rubber_wall`, `rubber_floor`, `rubber_glass` | 같은 원리, 표면별로 더 낮고 짧게 |
 | 신발 스퀵 | `squeak` | **임시 합성음** (적합한 무료 음원 미확보) |
 | 득점/실점/게임/매치 징글, 콤보 | `point_*`, `game_win`, `match_*`, `combo_up` | **임시 합성음** |
 | 돔 체육관 잔향 | `makeImpulse` | 합성 임펄스 응답 (초기 반사 + 2.8초 꼬리) |

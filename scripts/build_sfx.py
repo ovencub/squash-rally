@@ -3,13 +3,14 @@ import subprocess, sys, os, re, json
 SRC = sys.argv[1]; OUT = sys.argv[2]
 I = SRC + '/impact-sounds/Audio/'; U = SRC + '/interface-sounds/Audio/'
 MAP = {
-  'hit_soft':    [I+f'impactPlate_light_00{i}.ogg' for i in (1,3,4)],
-  'hit_hard':    [I+f'impactPlate_light_00{i}.ogg' for i in (0,2,3)],
-  'hit_perfect': [I+f'impactPlate_light_00{i}.ogg' for i in (1,3)],
-  'bounce_front':[I+f'impactPlate_light_00{i}.ogg' for i in (0,2)],
-  'bounce_side': [I+f'impactPlate_light_00{i}.ogg' for i in (2,4)],
+  # 고무공 피드백(둔탁·묵직): 라켓 = 주먹 타격(impactPunch_heavy), 벽 = 부드러운 무거운 충격(impactSoft_heavy)
+  'hit_soft':    [I+f'impactPunch_heavy_00{i}.ogg' for i in (0,1,4)],
+  'hit_hard':    [I+f'impactPunch_heavy_00{i}.ogg' for i in (0,1,3,4)],
+  'hit_perfect': [I+f'impactPunch_heavy_00{i}.ogg' for i in (3,0)],
+  'bounce_front':[I+f'impactSoft_heavy_00{i}.ogg' for i in (0,2,4)],
+  'bounce_side': [I+f'impactSoft_heavy_00{i}.ogg' for i in (1,3)],
   'bounce_glass':[I+f'impactGlass_light_00{i}.ogg' for i in (0,1,2)],
-  'bounce_floor':[I+f'impactWood_light_00{i}.ogg' for i in (0,1,2)],
+  'bounce_floor':[I+f'impactSoft_medium_00{i}.ogg' for i in (0,1,4)],
   'tin':         [I+f'impactTin_medium_00{i}.ogg' for i in (0,1,2)],
   'step':        [I+f'footstep_wood_00{i}.ogg' for i in (0,1,2,3,4)],
   'ui_hover':    [U+'tick_001.ogg'],

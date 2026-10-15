@@ -7,7 +7,8 @@
  "hit_hard": [
   "hit_hard_0",
   "hit_hard_1",
-  "hit_hard_2"
+  "hit_hard_2",
+  "hit_hard_3"
  ],
  "hit_perfect": [
   "hit_perfect_0",
@@ -15,7 +16,8 @@
  ],
  "bounce_front": [
   "bounce_front_0",
-  "bounce_front_1"
+  "bounce_front_1",
+  "bounce_front_2"
  ],
  "bounce_side": [
   "bounce_side_0",
