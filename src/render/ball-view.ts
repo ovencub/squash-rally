@@ -3,20 +3,23 @@ import { tuning } from '../config/tuning';
 import { type BallState } from '../physics/ball';
 import { addOutline, toon } from './scene';
 
-/** 공 + 바닥 그림자(높이 읽기용). 공은 판정 반지름보다 크게 그린다 (tuning.fx.ballVisualScale) */
+/** 공 + 바닥 그림자(높이 읽기용). 표시 크기 = 실제 반지름 × 설정 배율 (settings.ballSize → tuning.fx.ballVisualScale) */
 export class BallView {
   readonly group = new THREE.Group();
   private ball: THREE.Mesh;
   private shadow: THREE.Mesh;
 
   constructor() {
-    this.ball = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), toon(0x1a1a22));
-    addOutline(this.ball, 0.12);
-    // 노란 점 2개 (실제 스쿼시 공 표식)
-    const dotMat = new THREE.MeshBasicMaterial({ color: 0xffc93c });
-    for (const s of [-1, 1]) {
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), dotMat);
-      dot.position.set(s * 0.55, 0.55, 0.62);
+    // 실제 경기용 공(WSF 더블 옐로 닷): 지름 40mm 무광 검정 고무 + 작은 노란 점 2개
+    this.ball = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), toon(0x24242c));
+    addOutline(this.ball, 0.08);
+    const dotMat = new THREE.MeshBasicMaterial({ color: 0xffd23c });
+    const dotGeo = new THREE.CircleGeometry(0.16, 12);
+    for (const dir of [new THREE.Vector3(0.35, 0.35, 0.87), new THREE.Vector3(0.62, 0.2, 0.76)]) {
+      const n = dir.normalize();
+      const dot = new THREE.Mesh(dotGeo, dotMat);
+      dot.position.copy(n).multiplyScalar(1.005);
+      dot.lookAt(n.clone().multiplyScalar(2));
       this.ball.add(dot);
     }
     this.shadow = new THREE.Mesh(

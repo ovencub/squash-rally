@@ -11,7 +11,7 @@
 .logo, .banner .t, .combo .n, .popup, .panel h2, .sb-pts, .stats b { font-family: var(--display); font-weight: 400; letter-spacing: 0.02em; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1238; color: var(--white); }
-#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 #ui { position: fixed; inset: 0; pointer-events: none; }
 #ui .interactive { pointer-events: auto; }
 
@@ -203,5 +203,74 @@ input[type=range] { width: 180px; accent-color: var(--yellow); }
   border: 2px solid #fff; color: #fff; background: rgba(255,255,255,0.08);
 }
 .hud-guide .mouse { width: 16px; height: 22px; color: #fff; }
-.combo { padding: 8px 16px; border-radius: 16px; background: rgba(26, 18, 56, 0.75); border: 3px solid #6b4fd8; }
+.combo { padding: 8px 18px; border-radius: 16px; background: rgba(26, 18, 56, 0.75); border: 3px solid #6b4fd8; left: 50%; top: 12px; transform: translateX(-50%); text-align: center; }
 .touch-note { margin-top: 10px !important; padding: 8px 14px; border-radius: 12px; background: rgba(255, 90, 95, 0.2); border: 2px solid var(--coral); color: #fff !important; font-weight: 700; }
+
+/* ── 조작 시각화 (흰 선 + 누르면 노랑 채움) ── */
+.ctl-keys { position: absolute; left: 20px; top: 18px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.kc-row { display: flex; gap: 6px; }
+.kc {
+  width: 44px; height: 44px; border-radius: 10px; border: 3px solid #fff; display: flex; align-items: center; justify-content: center;
+  font: 900 18px 'Noto Sans KR', sans-serif; color: #fff; background: transparent; transition: background 0.06s, color 0.06s, transform 0.06s;
+}
+.kc.on { background: var(--yellow); border-color: var(--yellow); color: #1a1238; transform: translateY(2px); }
+.ctl-label { font-size: 13px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px #000; }
+.ctl-mouse { position: absolute; right: 20px; top: 84px; width: 132px; }
+.ctl-mouse svg { width: 100%; height: auto; overflow: visible; }
+.ctl-mouse .mb, .ctl-mouse .mbody { fill: transparent; stroke: #fff; stroke-width: 4; stroke-linejoin: round; transition: fill 0.06s; }
+.ctl-mouse .mb.on { fill: var(--yellow); stroke: var(--yellow); }
+.ctl-mouse .mb.hint:not(.on) { animation: mhint 0.5s ease-in-out infinite alternate; }
+@keyframes mhint { from { stroke: #fff; } to { stroke: var(--yellow); filter: drop-shadow(0 0 6px var(--yellow)); } }
+.ctl-mouse .ml { font: 900 15px 'Noto Sans KR', sans-serif; fill: #fff; text-anchor: middle; pointer-events: none; }
+.ctl-mouse.l-on .l, .ctl-mouse.r-on .r { fill: #1a1238; }
+.ctl-mouse .mt { font: 700 11px 'Noto Sans KR', sans-serif; fill: #cfc6ea; text-anchor: middle; }
+.ctl-mouse .ms { font: 700 11px 'Noto Sans KR', sans-serif; fill: #cfc6ea; text-anchor: middle; }
+.ctl-keys, .ctl-mouse { filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
+
+/* ── 모바일 터치 조작 ── */
+body.mobile .pc-only { display: none !important; }
+html, body { overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.touch { position: absolute; inset: 0; pointer-events: none; touch-action: none; }
+.touch .t-zone { position: absolute; left: 0; top: 18%; width: 50%; bottom: 0; pointer-events: auto; touch-action: none; }
+.touch .t-base {
+  position: absolute; width: 124px; height: 124px; margin: -62px 0 0 -62px; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.75); background: rgba(26,18,56,0.35); opacity: 0; transition: opacity 0.1s;
+  left: 18%; top: 72%;
+}
+.touch .t-base.on { opacity: 1; }
+.touch:not(.used) .t-base { opacity: 0.55; }
+.touch .t-knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; border-radius: 50%; background: var(--yellow); border: 3px solid #1a1238; transform: translate(-50%, -50%); }
+.touch .t-hint { position: absolute; left: 18%; top: calc(72% + 72px); transform: translateX(-50%); font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000; white-space: nowrap; }
+.touch.used .t-hint { display: none; }
+.touch .t-btn {
+  position: absolute; bottom: max(22px, env(safe-area-inset-bottom)); width: 104px; height: 104px; border-radius: 50%;
+  border: 4px solid #fff; background: rgba(26,18,56,0.45); color: #fff; pointer-events: auto; touch-action: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+}
+.touch .t-btn b { font: 900 17px 'Noto Sans KR', sans-serif; }
+.touch .t-btn small { font-size: 10px; opacity: 0.8; }
+.touch .t-btn.fore { right: max(22px, env(safe-area-inset-right)); }
+.touch .t-btn.back { right: calc(max(22px, env(safe-area-inset-right)) + 120px); bottom: calc(max(22px, env(safe-area-inset-bottom)) + 34px); }
+.touch .t-btn.on { background: var(--yellow); border-color: var(--yellow); color: #1a1238; transform: scale(0.94); }
+.touch .t-btn.hint:not(.on) { animation: mhint2 0.5s ease-in-out infinite alternate; }
+@keyframes mhint2 { from { border-color: #fff; } to { border-color: var(--yellow); box-shadow: 0 0 16px var(--yellow); } }
+.rotate-note { position: absolute; inset: 0; z-index: 40; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: #1a1238; color: #fff; font-size: 20px; pointer-events: auto; }
+.rotate-note div { font-size: 48px; }
+
+/* 작은 화면(휴대폰 가로)에서 HUD 축소 */
+@media (max-height: 500px) {
+  .scoreboard { transform: translateX(-50%) scale(0.72); transform-origin: top center; top: 4px; }
+  .speed-ctl { transform: scale(0.8); transform-origin: top right; top: 6px; right: 58px; }
+  .pause-btn { width: 40px; height: 40px; top: 6px; right: 8px; }
+  .combo { transform: translateX(-50%) scale(0.75); transform-origin: top center; top: 4px; }
+  .banner .t { font-size: 40px; }
+  .side-label { display: none; }
+  .panel { padding: 16px 18px; max-height: 92vh; overflow-y: auto; }
+  .logo-img { width: auto; max-width: 60vw; max-height: 42vh; }
+  .logo-img.small { max-height: 26vh; }
+  .tagline { margin-top: 4px !important; font-size: 13px; }
+  .touch-note { font-size: 12px; padding: 5px 10px; }
+  .btns { gap: 7px; margin-top: 12px; }
+  .btn { padding: 9px 16px; font-size: 16px; }
+  .howto-list { line-height: 1.5; font-size: 13px; }
+}

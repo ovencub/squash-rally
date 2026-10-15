@@ -52,7 +52,7 @@ export class Screens {
     this.show(
       `<img class="logo-img" src="${import.meta.env.BASE_URL}img/logo.webp" alt="${tuning.game.title}">
        <p class="tagline">링크 하나로 바로 치는 3D 스쿼시</p>
-       ${matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches ? '<p class="touch-note">키보드·마우스로 하는 게임이에요. PC 브라우저에서 열어주세요!</p>' : ''}
+       ${matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches ? '<p class="touch-note">📱 터치 조작 · 가로 화면으로 플레이</p>' : ''}
        <div class="btns"><button class="btn primary" data-act="start">시작하기</button></div>`,
       a,
     );
@@ -100,6 +100,7 @@ export class Screens {
          <li>바닥의 <b>빨간 링</b>은 공이 칠 만한 높이로 내려올 곳이에요</li>
          <li>바닥에 <b>두 번 튀기 전에</b> 쳐야 해요</li>
        </ol>
+       <p style="margin-top:12px"><b>모바일</b>: 왼쪽을 누르고 끌어 이동 · 오른쪽 <b>백핸드/포핸드</b> 버튼으로 스윙 · 치는 순간 조이스틱을 기울인 쪽으로 공이 가요</p>
        <div class="btns"><button class="btn" data-act="back">돌아가기</button></div>`,
       a,
     );
@@ -111,7 +112,9 @@ export class Screens {
     this.show(
       `<h2>설정</h2>
        <div class="row"><label>효과음</label><input type="range" min="0" max="1" step="0.05" value="${s.volume}" data-range="volume"></div>
+       <div class="row"><label>조작 방식</label>${seg('control', [['pc', 'PC 키보드·마우스'], ['mobile', '모바일 터치']], s.control)}</div>
        <div class="row"><label>화면 진동</label>${seg('shake', [['off', '끔'], ['weak', '약'], ['normal', '보통']], s.shake)}</div>
+       <div class="row"><label>공 크기</label>${seg('ball', [['real', '실제 크기'], ['normal', '보통'], ['big', '크게']], s.ballSize)}</div>
        <div class="row"><label>이동 속도 <b data-out="move">${s.moveSpeed.toFixed(1)}</b></label><input type="range" min="${tuning.player.moveSpeedMin}" max="${tuning.player.moveSpeedMax}" step="0.1" value="${s.moveSpeed}" data-range="move"></div>
        <div class="btns"><button class="btn" data-act="back">확인</button></div>`,
       a,
@@ -119,6 +122,8 @@ export class Screens {
     this.el.querySelectorAll<HTMLButtonElement>('[data-seg]').forEach((b) =>
       b.addEventListener('click', () => {
         if (b.dataset.seg === 'shake') s.shake = b.dataset.v as Settings['shake'];
+        if (b.dataset.seg === 'ball') s.ballSize = b.dataset.v as Settings['ballSize'];
+        if (b.dataset.seg === 'control') s.control = b.dataset.v as Settings['control'];
         b.parentElement!.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
         sfx.play('ui_click');
         saveSettings(s);

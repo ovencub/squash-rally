@@ -4,7 +4,8 @@ import { buildCourt } from './config/court';
 import { tuning, type Difficulty } from './config/tuning';
 import { Game, type HitEvent, type MatchStats, type Mode, type WhiffReason } from './game/game';
 import { type Hand } from './game/swing';
-import { loadSettings, saveSettings } from './game/settings';
+import { TouchControls } from './input/touch';
+import { BALL_SCALE, loadSettings, saveSettings } from './game/settings';
 import { type Vec3 } from './physics/ball';
 import { isDeuce, type MatchState } from './rules/par';
 import { type RallyResult } from './rules/rally';
@@ -35,6 +36,7 @@ const renderer = rendererOrNull;
 const scene = createScene();
 const settings = loadSettings();
 sfx.volume = settings.volume;
+tuning.fx.ballVisualScale = BALL_SCALE[settings.ballSize];
 
 // ── HUD ──
 ui.innerHTML = `
@@ -55,10 +57,23 @@ ui.innerHTML = `
     </div>
     <button class="pause-btn" id="pauseBtn" title="일시정지 (Esc)">II</button>
     <div class="banner" id="banner"><div class="t"></div><div class="d"></div></div>
-    <div class="hud-guide">
-      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동</span><i></i>
-      <span><svg class="mouse r" viewBox="0 0 16 22"><rect x="1" y="1" width="14" height="20" rx="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 1 V9 H15 V8 A7 7 0 0 0 8 1Z" fill="#ffc93c"/><line x1="8" y1="1" x2="8" y2="9" stroke="currentColor" stroke-width="1.5"/></svg> 포핸드</span><i></i>
-      <span><svg class="mouse l" viewBox="0 0 16 22"><rect x="1" y="1" width="14" height="20" rx="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 1 V9 H1 V8 A7 7 0 0 1 8 1Z" fill="#ffc93c"/><line x1="8" y1="1" x2="8" y2="9" stroke="currentColor" stroke-width="1.5"/></svg> 백핸드</span><i></i>
+    <!-- 조작 시각화 (PC): 좌상단 WASD, 우상단 마우스 — 누르는 키만 노랗게 채움 -->
+    <div class="ctl-keys pc-only" id="ctlKeys">
+      <div class="kc" data-k="w">W</div>
+      <div class="kc-row"><div class="kc" data-k="a">A</div><div class="kc" data-k="s">S</div><div class="kc" data-k="d">D</div></div>
+      <div class="ctl-label">이동</div>
+    </div>
+    <div class="ctl-mouse pc-only" id="ctlMouse">
+      <svg viewBox="0 0 140 176" aria-hidden="true">
+        <path id="mL" class="mb" d="M68 6 C34 6 10 30 10 66 L10 84 L68 84 Z"/>
+        <path id="mR" class="mb" d="M72 6 L72 84 L130 84 L130 66 C130 30 106 6 72 6 Z"/>
+        <path class="mbody" d="M10 88 L130 88 L130 112 C130 148 104 170 70 170 C36 170 10 148 10 112 Z"/>
+        <text x="39" y="52" class="ml l">백핸드</text><text x="101" y="52" class="ml r">포핸드</text>
+        <text x="39" y="70" class="ms l">좌클릭</text><text x="101" y="70" class="ms r">우클릭</text>
+        <text x="70" y="130" class="mt">공 쪽 버튼</text>
+      </svg>
+    </div>
+    <div class="hud-guide pc-only">
       <span><kbd>커서</kbd> 방향</span><i></i>
       <span><kbd>Esc</kbd> 일시정지</span>
     </div>
@@ -84,6 +99,33 @@ const speedVal = document.getElementById('moveSpeedVal')!;
 function syncSpeedUi() {
   speedInput.value = String(settings.moveSpeed);
   speedVal.textContent = settings.moveSpeed.toFixed(1);
+  tuning.fx.ballVisualScale = BALL_SCALE[settings.ballSize];
+  applyControlMode();
+}
+
+// ── 모바일 터치 조작 ──
+const touch = new TouchControls(ui, {
+  onSwing: (hand, ax) => {
+    if (!game) return;
+    sfx.unlock();
+    // 치는 순간 조이스틱 좌우 기울기 → 공 방향 (기울이지 않으면 정면)
+    const p = game.playerPos;
+    game.swing({ hand, aim: Math.abs(ax) > 0.2 ? { x: p.x + ax * 2.2, z: p.z - 2 } : null });
+  },
+});
+const rotateNote = document.createElement('div');
+rotateNote.className = 'rotate-note hidden';
+rotateNote.innerHTML = '<div>📱↻</div><b>화면을 가로로 돌려주세요</b>';
+ui.appendChild(rotateNote);
+const isMobile = () => settings.control === 'mobile';
+/** 조작 방식(PC/모바일)에 맞게 HUD와 터치 컨트롤 표시 */
+function applyControlMode() {
+  const mob = isMobile();
+  document.body.classList.toggle('mobile', mob);
+  touch.setVisible(mob && !!game && !game.paused && !screens.visible);
+  rotateNote.classList.toggle('hidden', !(mob && window.innerHeight > window.innerWidth));
+  // 모바일은 해상도 배율을 낮춰 프레임 확보
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, mob ? 1.5 : 2));
 }
 speedInput.addEventListener('input', () => {
   settings.moveSpeed = Number(speedInput.value);
@@ -92,7 +134,6 @@ speedInput.addEventListener('input', () => {
 });
 speedInput.addEventListener('change', () => speedInput.blur());
 speedInput.addEventListener('pointerup', () => speedInput.blur());
-syncSpeedUi();
 
 // ── 메뉴 배경: 코트만 ──
 const backdropRig = new CameraRig();
@@ -101,6 +142,7 @@ scene.add(backdrop);
 
 let game: Game | null = null;
 let difficulty: Difficulty = 'easy';
+syncSpeedUi();
 
 function aspect() {
   return window.innerWidth / window.innerHeight;
@@ -110,7 +152,10 @@ function resize() {
   backdropRig.fit(buildCourt('easy'), aspect());
   game?.resize(aspect());
 }
-window.addEventListener('resize', resize);
+window.addEventListener('resize', () => {
+  resize();
+  applyControlMode();
+});
 
 function project(p: Vec3): { x: number; y: number } {
   const v = new THREE.Vector3(p.x, p.y, p.z).project((game?.rig ?? backdropRig).camera);
@@ -179,6 +224,11 @@ function startGame(m: Mode, d: Difficulty) {
   mode = m;
   difficulty = d;
   screens.hide();
+  if (isMobile()) {
+    // 모바일: 가능하면 전체 화면 + 가로 고정 (지원 안 하는 브라우저는 무시)
+    void document.documentElement.requestFullscreen?.().catch(() => {});
+    void (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape').catch(() => {});
+  }
   if (backdrop) {
     scene.remove(backdrop);
     backdrop = null;
@@ -293,9 +343,19 @@ function updateAim(e: { clientX: number; clientY: number }) {
 }
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('pointermove', updateAim);
+const mouseHeld = { l: 0, r: 0 }; // 마지막으로 누른 시각 (짧은 클릭도 잠깐 보이게)
+const mouseDown = { l: false, r: false };
+window.addEventListener('pointerup', (e) => {
+  if (e.button === 0) mouseDown.l = false;
+  if (e.button === 2) mouseDown.r = false;
+});
 canvas.addEventListener('pointerdown', (e) => {
   sfx.unlock();
-  if (!game || (e.button !== 0 && e.button !== 2)) return;
+  if (e.pointerType === 'mouse') {
+    if (e.button === 0) (mouseDown.l = true), (mouseHeld.l = performance.now());
+    if (e.button === 2) (mouseDown.r = true), (mouseHeld.r = performance.now());
+  }
+  if (!game || (e.button !== 0 && e.button !== 2) || e.pointerType === 'touch') return;
   updateAim(e);
   game.swing({ hand: e.button === 2 ? 'fore' : 'back', aim: game.aimPoint });
 });
@@ -352,6 +412,26 @@ window.addEventListener('keydown', async (e) => {
   }).show();
 });
 
+// ── 조작 시각화 갱신 ──
+const keyEls = [...document.querySelectorAll<HTMLElement>('#ctlKeys .kc')];
+const KEYMAP: Record<string, string[]> = { w: ['KeyW', 'ArrowUp'], a: ['KeyA', 'ArrowLeft'], s: ['KeyS', 'ArrowDown'], d: ['KeyD', 'ArrowRight'] };
+const mL = document.getElementById('mL')!;
+const mR = document.getElementById('mR')!;
+const mouseEl = document.getElementById('ctlMouse')!;
+function updateControlHud(now: number) {
+  for (const el of keyEls) el.classList.toggle('on', KEYMAP[el.dataset.k!].some((c) => keys.has(c)));
+  const lOn = mouseDown.l || now - mouseHeld.l < 180;
+  const rOn = mouseDown.r || now - mouseHeld.r < 180;
+  mL.classList.toggle('on', lOn);
+  mR.classList.toggle('on', rOn);
+  mouseEl.classList.toggle('l-on', lOn);
+  mouseEl.classList.toggle('r-on', rOn);
+  // 공이 타격 범위에 들어오면 칠 버튼 테두리를 반짝여 알려줌
+  const hint = game?.liveHand ?? null;
+  mL.classList.toggle('hint', hint === 'back');
+  mR.classList.toggle('hint', hint === 'fore');
+}
+
 // ── 루프 ──
 const stats = { fps: 0, frames: 0 };
 Object.assign(window as object, { __stats: stats, __game: () => game, __startSolo: startSolo, __startMatch: startMatch, __tuning: tuning, __sfx: sfx });
@@ -366,12 +446,20 @@ function frame(now: number) {
   if (game) {
     const mx = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
     const mz = (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0) - (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0);
-    game.moveInput.x = mx;
-    game.moveInput.z = mz;
+    const mob = isMobile();
+    game.moveInput.x = mob ? touch.move.x : mx;
+    game.moveInput.z = mob ? touch.move.z : mz;
+    if (mob) {
+      const p = game.playerPos;
+      game.aimPoint = Math.abs(touch.move.x) > 0.2 ? { x: p.x + touch.move.x * 2.2, z: p.z - 2 } : null;
+      touch.hint(game.liveHand);
+    }
+    touch.setVisible(mob && !game.paused && !screens.visible);
     game.update(dt);
     const s = game.session;
     comboEl.textContent = String(s.combo);
     comboSub.textContent = `최고 ${s.best} · PERFECT ${s.perfects}`;
+    updateControlHud(now);
     serveTip.classList.toggle('hidden', !(game.match && game.matchPhase === 'serveWait' && game.match.server === 'A'));
     sideEl.textContent = game.ballSide === 'fore' ? '포핸드 (우클릭)' : game.ballSide === 'back' ? '백핸드 (좌클릭)' : '';
     renderer.render(scene, game.rig.camera);

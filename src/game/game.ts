@@ -98,6 +98,10 @@ interface Athlete {
   target: { x: number; z: number } | null;
   /** 발소리용 누적 이동 거리 */
   stepAcc: number;
+  /** 임팩트 IK 대상 (공 위치에 라켓 면을 맞춤) */
+  contact: { ball: THREE.Vector3; aim: THREE.Vector3; w: number } | null;
+  /** 새 임팩트: 다음 프레임에 히트스톱 중이어도 자세를 즉시 맞춤 */
+  snap: boolean;
 }
 
 /**
@@ -150,6 +154,8 @@ export class Game {
   private tmpB = new THREE.Vector3();
   /** 공이 지금 어느 손 쪽인지 (HUD 표시용) */
   ballSide: Hand | null = null;
+  /** 공이 지금 타격 범위 안에 있으면 칠 손 (조작 힌트용) */
+  liveHand: Hand | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -182,7 +188,7 @@ export class Game {
   }
 
   private makeAthlete(id: PlayerId, shirt: number, trim: number, x: number, z: number): Athlete {
-    return { id, mover: createMover(x, z), ch: createCharacter(shirt, trim), swingAnim: null, swingHand: 'fore', swingCooldown: 0, target: null, stepAcc: 0 };
+    return { id, mover: createMover(x, z), ch: createCharacter(shirt, trim), swingAnim: null, swingHand: 'fore', swingCooldown: 0, target: null, stepAcc: 0, contact: null, snap: false };
   }
 
   private objects(): THREE.Object3D[] {
@@ -300,6 +306,9 @@ export class Game {
     const plan = planDrive(from, score, wallX, w.court);
     w.launch(from, plan.vel, who.id, false);
     this.rallyHits++;
+    // 스윙을 실제 공 위치에 맞춤: 임팩트 자세(IK)로 즉시 맞추고 히트스톱 동안 멈춘 뒤 팔로스루로 풀림
+    who.contact = { ball: new THREE.Vector3(from.x, from.y, from.z), aim: new THREE.Vector3(plan.target.x, plan.target.y, 0), w: 1 };
+    who.snap = true;
     who.swingHand = input.hand;
     who.swingAnim = SWING_CONTACT;
     who.swingCooldown = tuning.input.swingCooldownMs / 1000;
@@ -360,6 +369,8 @@ export class Game {
     this.world.launch(from, vel, who.id, true, m.serveSide);
     this.matchPhase = 'rally';
     this.rallyHits = 1;
+    who.contact = { ball: new THREE.Vector3(from.x, from.y, from.z), aim: new THREE.Vector3(0, c.serviceLineHeight + 1, 0), w: 1 };
+    who.snap = true;
     who.swingHand = 'fore';
     who.swingAnim = SWING_CONTACT;
     who.swingCooldown = tuning.input.swingCooldownMs / 1000;
@@ -542,7 +553,7 @@ export class Game {
       : false;
     const showRing = this.ring && w.rally.phase === 'returning' ? this.ring : null;
     this.ballSide = showRing ? handFor(showRing.point, this.playerPos) : null;
-    const liveHand = b && this.myTurn() && w.rally.phase === 'returning' && inReach(b.pos, this.playerPos) ? handFor(b.pos, this.playerPos) : null;
+    const liveHand = (this.liveHand = b && this.myTurn() && w.rally.phase === 'returning' && inReach(b.pos, this.playerPos) ? handFor(b.pos, this.playerPos) : null);
     this.guide.update(showRing?.point ?? null, showRing ? showRing.t - b!.time : 0, ringGood, this.playerPos, liveHand);
     this.aimGuide.update(this.playerPos, aimWallX(this.playerPos, this.aimPoint, w.court), !this.paused && !!this.aimPoint);
 
@@ -566,8 +577,23 @@ export class Game {
         a.swingAnim += realDt / SWING_SECONDS;
         if (a.swingAnim >= 1) a.swingAnim = null;
       }
-      a.ch.root.position.x = a.mover.x;
-      a.ch.root.position.z = a.mover.z;
+      // 공이 다가오면 칠 손 쪽으로 미리 라켓을 뺌 (준비 동작)
+      let prep = 0;
+      const turn = b && w.rally.phase === 'returning' && (a === this.A ? this.myTurn() : w.rally.lastHitter === 'A');
+      if (turn && a.swingAnim === null) {
+        const d = Math.hypot(b!.pos.x - a.mover.x, b!.pos.z - a.mover.z);
+        prep = Math.max(0, Math.min(1, (2.8 - d) / 1.3));
+        if (prep > 0) a.swingHand = handFor(b!.pos, { x: a.mover.x });
+      }
+      // 임팩트 IK 영향도: 히트스톱이 끝나면 팔로스루 동안 서서히 0으로
+      if (a.contact && !frozen && !this.paused && !a.snap) {
+        a.contact.w -= realDt / 0.22;
+        if (a.contact.w <= 0) a.contact = null;
+      }
+      if (!frozen || a.snap) {
+        a.ch.root.position.x = a.mover.x;
+        a.ch.root.position.z = a.mover.z;
+      }
       animateCharacter(a.ch, this.paused ? 0 : realDt, {
         vx: a.mover.vx,
         vz: a.mover.vz,
@@ -575,7 +601,11 @@ export class Game {
         swing: a.swingAnim,
         hand: a.swingHand,
         frozen,
+        contact: a.contact,
+        prep,
+        snap: a.snap,
       });
+      a.snap = false;
     }
     this.A.ch.root.updateMatrixWorld(true);
     if (this.A.swingAnim !== null && !frozen) {
