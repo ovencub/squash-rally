@@ -5,6 +5,8 @@ import { tuning, type Difficulty } from './config/tuning';
 import { Game, type HitEvent, type MatchStats, type Mode, type WhiffReason } from './game/game';
 import { type Hand } from './game/swing';
 import { TouchControls } from './input/touch';
+import { normalizeCode, OnlineSession, roomLink } from './net/online';
+import { type NetMsg } from './net/protocol';
 import { BALL_SCALE, loadSettings, saveSettings } from './game/settings';
 import { type Vec3 } from './physics/ball';
 import { isDeuce, type MatchState } from './rules/par';
@@ -47,6 +49,7 @@ ui.innerHTML = `
       <div class="sb-p"><b class="sb-pts" id="pB">0</b><span class="sb-games" id="gB"></span><span class="sb-name ai">AI</span></div>
       <div class="sb-info" id="sbInfo"></div>
     </div>
+    <div class="net-badge hidden" id="netBadge"></div>
     <div class="serve-tip hidden" id="serveTip">클릭해서 <b>서브</b>!</div>
     <div class="combo"><div class="l">COMBO</div><div class="n" id="combo">0</div><div class="s" id="comboSub"></div></div>
     <div class="side-label" id="side"></div>
@@ -91,6 +94,8 @@ const fpsEl = document.getElementById('fps')!;
 const comboBox = document.querySelector('.combo') as HTMLElement;
 const scoreboard = document.getElementById('scoreboard')!;
 const serveTip = document.getElementById('serveTip')!;
+const speedCtl = document.querySelector('.speed-ctl') as HTMLElement;
+const netBadge = document.getElementById('netBadge')!;
 const screens = new Screens(ui);
 
 // 이동 속도 슬라이더 (HUD). 조절 후 포커스를 바로 풀어 방향키가 슬라이더를 움직이지 않게 한다.
@@ -191,19 +196,26 @@ const WHIFF_TEXT: Record<WhiffReason, (h: Hand) => [string, string | null]> = {
   wrongHand: (h) => ['반대 손!', h === 'fore' ? '공이 왼쪽 → 좌클릭(백핸드)' : '공이 오른쪽 → 우클릭(포핸드)'],
   outOfRange: () => ['헛스윙', '공이 범위 밖이에요'],
   noBall: () => ['헛스윙', null],
-  notYourTurn: () => ['헛스윙', 'AI가 칠 차례예요'],
+  notYourTurn: () => ['헛스윙', `${oppName()}가 칠 차례예요`],
 };
 
 const dots = (n: number) => '●'.repeat(n) + '○'.repeat(Math.max(0, 2 - n));
+/** 상대 이름: AI 대전 = "AI", 온라인 = "친구" */
+const oppName = () => (mode === 'online' ? '친구' : 'AI');
+const ME = () => game?.me ?? 'A';
+const THEM = () => game?.them ?? 'B';
 function renderScore(m: MatchState) {
-  document.getElementById('pA')!.textContent = String(m.points.A);
-  document.getElementById('pB')!.textContent = String(m.points.B);
-  document.getElementById('gA')!.textContent = dots(m.games.A);
-  document.getElementById('gB')!.textContent = dots(m.games.B);
+  const me = ME();
+  const them = THEM();
+  document.getElementById('pA')!.textContent = String(m.points[me]);
+  document.getElementById('pB')!.textContent = String(m.points[them]);
+  document.getElementById('gA')!.textContent = dots(m.games[me]);
+  document.getElementById('gB')!.textContent = dots(m.games[them]);
+  document.querySelector('.sb-name.ai')!.textContent = oppName();
   const gameNo = m.history.length + (m.winner ? 0 : 1);
   const serveSide = m.serveSide === 'right' ? '오른쪽' : '왼쪽';
   document.getElementById('sbInfo')!.textContent =
-    `GAME ${gameNo}  |  11점 선취  |  서브 ${m.server === 'A' ? '◀ 나' : 'AI ▶'} (${serveSide})${isDeuce(m.points) ? '  |  듀스 · 2점 차' : ''}`;
+    `GAME ${gameNo}  |  11점 선취  |  서브 ${m.server === me ? '◀ 나' : `${oppName()} ▶`} (${serveSide})${isDeuce(m.points) ? '  |  듀스 · 2점 차' : ''}`;
   for (const id of ['pA', 'pB']) {
     const el = document.getElementById(id)!;
     el.classList.remove('punch');
@@ -220,7 +232,7 @@ function startMatch(d: Difficulty) {
   startGame('match', d);
 }
 
-function startGame(m: Mode, d: Difficulty) {
+function startGame(m: Mode, d: Difficulty, link: OnlineSession | null = null) {
   mode = m;
   difficulty = d;
   screens.hide();
@@ -236,7 +248,7 @@ function startGame(m: Mode, d: Difficulty) {
   game?.dispose();
   game = new Game(scene, d, settings, {
     onHit: (e: HitEvent) => {
-      if (e.by !== 'A') return;
+      if (e.by !== game?.me) return;
       popup(GRADE_TEXT[e.grade], e.grade, e.at, e.hint);
       comboEl.classList.remove('punch');
       void comboEl.offsetWidth;
@@ -248,20 +260,26 @@ function startGame(m: Mode, d: Difficulty) {
     },
     onPoint: (r: RallyResult, ms: MatchState) => {
       const t = REASON_TEXT[r.reason];
-      const who = r.winner === 'A' ? '내 득점!' : 'AI 득점';
+      const me = ME();
+      const them = THEM();
+      const who = r.winner === me ? '내 득점!' : `${oppName()} 득점`;
       if (ms.gameJustWon) {
         const last = ms.history[ms.history.length - 1];
-        const title = ms.winner ? (ms.winner === 'A' ? 'MATCH WIN!' : 'MATCH LOST') : `GAME ${ms.history.length}`;
-        showBanner(title, `${ms.gameJustWon === 'A' ? '내가' : 'AI가'} 게임을 가져갔어요 (${last.A} - ${last.B})`, 2.6);
-      } else showBanner(t.title, `${who} · ${matchReasonText(r.reason, r.loser === 'A')}`);
+        const title = ms.winner ? (ms.winner === me ? 'MATCH WIN!' : 'MATCH LOST') : `GAME ${ms.history.length}`;
+        showBanner(title, `${ms.gameJustWon === me ? '내가' : `${oppName()}가`} 게임을 가져갔어요 (${last[me]} - ${last[them]})`, 2.6);
+      } else showBanner(t.title, `${who} · ${matchReasonText(r.reason, r.loser === me).replace('AI', oppName())}`);
       renderScore(ms);
     },
     onServeReady: (ms: MatchState) => {
       renderScore(ms);
-      serveTip.classList.toggle('hidden', ms.server !== 'A');
+      serveTip.classList.toggle('hidden', ms.server !== ME());
     },
     onMatchEnd: (ms: MatchState, st: MatchStats) => {
       if (!game) return;
+      if (mode === 'online') {
+        screens.matchResults(ms, st, difficulty, { retry: requestRematch, menu: leaveOnline }, game.me, true);
+        return;
+      }
       game.paused = true;
       screens.matchResults(ms, st, difficulty, { retry: () => startMatch(difficulty), menu: backToMenu });
     },
@@ -270,10 +288,11 @@ function startGame(m: Mode, d: Difficulty) {
       const [t, sub] = WHIFF_TEXT[reason](hand);
       popup(t, 'whiff', { x: game.playerPos.x, y: 1.9, z: game.playerPos.z }, sub);
     },
-  }, m);
+  }, m, link);
   game.resize(aspect());
   comboBox.classList.toggle('hidden', m !== 'solo');
-  scoreboard.classList.toggle('hidden', m !== 'match');
+  scoreboard.classList.toggle('hidden', m === 'solo');
+  speedCtl.classList.toggle('hidden', false);
   if (game.match) renderScore(game.match);
   syncSpeedUi();
   hud.classList.remove('hidden');
@@ -304,6 +323,7 @@ function showMain() {
   screens.main({
     solo: () => screens.difficulty({ pick: startSolo, back: showMain }),
     ai: () => screens.difficulty({ pick: startMatch, back: showMain }, 'AI 대전'),
+    online: showOnline,
     howto: () => screens.howto({ back: showMain }),
     settings: () => screens.settings(settings, { back: showMain, changed: syncSpeedUi }),
   });
@@ -311,6 +331,7 @@ function showMain() {
 
 function pause() {
   if (!game || game.paused) return;
+  if (mode === 'online') return showLeaveOnline(); // 온라인은 멈출 수 없음
   game.paused = true;
   sfx.play('ui_pause');
   showPause();
@@ -323,13 +344,130 @@ function showPause() {
     },
     settings: () => screens.settings(settings, { back: showPause, changed: syncSpeedUi }),
     quit: () => {
-      if (mode === 'match') return backToMenu();
+      if (mode !== 'solo') return backToMenu();
       const s = game!.session;
       screens.results(s, { retry: () => startSolo(difficulty), menu: backToMenu });
     },
   });
 }
 document.getElementById('pauseBtn')!.addEventListener('click', pause);
+
+// ── 친구와 대전 (온라인) ──
+let net: OnlineSession | null = null;
+let rematch = { me: false, them: false };
+
+function closeNet() {
+  net?.leave();
+  net = null;
+}
+
+function wireNet(n: OnlineSession, d: Difficulty) {
+  net = n;
+  n.on((msg: NetMsg) => {
+    if (msg.t === 'start') {
+      if (n.role === 'guest') beginOnline(msg.difficulty);
+      return;
+    }
+    if (msg.t === 'rematch') {
+      rematch.them = true;
+      maybeRematch(d);
+      return;
+    }
+    if (msg.t === 'hello') return;
+    if (mode === 'online') game?.receive(msg);
+  });
+  n.onClose = (reason) => {
+    net = null;
+    const wasPlaying = !!game && mode === 'online';
+    if (wasPlaying) {
+      game?.dispose();
+      game = null;
+      hud.classList.add('hidden');
+      ensureBackdrop();
+    }
+    screens.message('대전 종료', reason, { ok: showMain });
+  };
+}
+
+function beginOnline(d: Difficulty) {
+  rematch = { me: false, them: false };
+  difficulty = d;
+  startGame('online', d, net);
+}
+
+function maybeRematch(d: Difficulty) {
+  if (!net || !rematch.me || !rematch.them) return;
+  if (net.role === 'host') {
+    net.send({ t: 'start', difficulty: difficulty });
+    beginOnline(difficulty);
+  }
+  void d;
+}
+
+function requestRematch() {
+  if (!net) return showMain();
+  rematch.me = true;
+  net.send({ t: 'rematch' });
+  screens.onlineRematchWait({ menu: leaveOnline });
+  maybeRematch(difficulty);
+}
+
+function leaveOnline() {
+  closeNet();
+  backToMenu();
+}
+
+function showLeaveOnline() {
+  screens.leaveOnline({
+    stay: () => screens.hide(),
+    settings: () => screens.settings(settings, { back: showLeaveOnline, changed: syncSpeedUi }),
+    leave: leaveOnline,
+  });
+}
+
+function ensureBackdrop() {
+  if (!backdrop) {
+    backdrop = createCourtMesh(buildCourt('easy'));
+    scene.add(backdrop);
+  }
+}
+
+function showOnline() {
+  screens.online({
+    back: showMain,
+    create: async (d) => {
+      screens.onlineConnecting('…', { cancel: () => (closeNet(), showOnline()) });
+      try {
+        const n = await OnlineSession.host();
+        wireNet(n, d);
+        screens.onlineWaiting(n.code, roomLink(n.code), d, { cancel: () => (closeNet(), showOnline()) });
+        n.onOpen = () => {
+          n.send({ t: 'start', difficulty: d });
+          beginOnline(d);
+        };
+      } catch {
+        screens.message('방을 만들지 못했어요', '네트워크를 확인하고 다시 시도해 주세요', { ok: showOnline });
+      }
+    },
+    join: (raw) => joinRoom(raw),
+  });
+}
+
+async function joinRoom(raw: string) {
+  const code = normalizeCode(raw);
+  if (code.length !== 6) {
+    screens.message('코드를 확인해 주세요', '친구에게 받은 6자리 코드를 입력해요', { ok: showOnline });
+    return;
+  }
+  screens.onlineConnecting(code, { cancel: () => (closeNet(), showMain()) });
+  try {
+    const n = await OnlineSession.join(code);
+    wireNet(n, 'normal'); // 난이도는 호스트의 start 메시지로 정해짐
+  } catch {
+    net = null;
+    screens.message('방을 찾지 못했어요', `코드 ${code}가 맞는지, 친구가 대기 화면에 있는지 확인해 주세요`, { ok: showOnline });
+  }
+}
 
 // ── 입력: 우클릭 = 포핸드, 좌클릭 = 백핸드, 커서 = 방향 ──
 const raycaster = new THREE.Raycaster();
@@ -375,7 +513,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => {
   keys.clear();
-  if (game && !game.paused) pause();
+  if (game && !game.paused && mode !== 'online') pause();
 });
 
 // ── 디버그 패널 (` 키) — 처음 누를 때만 불러온다 (일반 플레이어 로딩에 포함되지 않게) ──
@@ -460,6 +598,11 @@ function frame(now: number) {
     comboEl.textContent = String(s.combo);
     comboSub.textContent = `최고 ${s.best} · PERFECT ${s.perfects}`;
     updateControlHud(now);
+    netBadge.classList.toggle('hidden', mode !== 'online' || !net);
+    if (mode === 'online' && net) {
+      const ping = net.pingMs;
+      netBadge.textContent = `온라인 · 핑 ${ping}ms ${ping < 80 ? '●' : ping < 160 ? '◐' : '○'}`;
+    }
     serveTip.classList.toggle('hidden', !(game.match && game.matchPhase === 'serveWait' && game.match.server === 'A'));
     sideEl.textContent = game.ballSide === 'fore' ? '포핸드 (우클릭)' : game.ballSide === 'back' ? '백핸드 (좌클릭)' : '';
     renderer.render(scene, game.rig.camera);
@@ -482,7 +625,12 @@ function frame(now: number) {
 }
 
 resize();
-screens.title({ start: showMain });
+const roomParam = new URLSearchParams(location.search).get('room');
+if (roomParam) {
+  // 초대 링크로 들어옴: 주소창에서 코드를 지우고 바로 참가
+  history.replaceState(null, '', location.pathname);
+  screens.title({ start: () => joinRoom(roomParam) });
+} else screens.title({ start: showMain });
 requestAnimationFrame(frame);
 // 첫 프레임이 그려지고 폰트가 준비되면 로딩 화면을 걷는다
 void document.fonts.ready.then(() =>

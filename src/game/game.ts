@@ -40,8 +40,9 @@ import {
   type SwingInput,
 } from './swing';
 import { World } from './world';
+import { type NetMsg, type OnlineLink } from '../net/protocol';
 
-export type Mode = 'solo' | 'match';
+export type Mode = 'solo' | 'match' | 'online';
 
 export interface HitEvent {
   by: PlayerId;
@@ -156,6 +157,14 @@ export class Game {
   ballSide: Hand | null = null;
   /** 공이 지금 타격 범위 안에 있으면 칠 손 (조작 힌트용) */
   liveHand: Hand | null = null;
+  /** 내 선수 ID / 상대 선수 ID (온라인 참가자는 me = 'B') */
+  readonly me: PlayerId;
+  readonly them: PlayerId;
+  /** 온라인: 이번 랠리 결과를 이미 확정/수신했는지 */
+  private rallyDecided = false;
+  /** 온라인: 상대 위치 수신값 (보간 목표) */
+  private remote: { x: number; z: number; vx: number; vz: number } | null = null;
+  private posTimer = 0;
 
   constructor(
     scene: THREE.Scene,
@@ -163,19 +172,23 @@ export class Game {
     private settings: Settings,
     private hooks: GameHooks,
     readonly mode: Mode = 'solo',
+    private net: OnlineLink | null = null,
   ) {
     this.scene = scene;
+    // 온라인: 호스트 = A, 참가자 = B. 화면에서는 항상 "나"가 카메라 앞(this.A 객체)
+    this.me = net?.me ?? 'A';
+    this.them = this.me === 'A' ? 'B' : 'A';
     this.world = new World(difficulty, mode === 'solo' ? 1 : 2);
     this.loop = new FixedLoop((dt) => this.simStep(dt));
     this.session = new SoloSession(difficulty);
     this.courtMesh = createCourtMesh(this.world.court);
     const t = tPosition(this.world.court);
-    this.A = this.makeAthlete('A', palette.playerShirt, palette.accent, t.x, t.z + 0.6);
-    if (mode === 'match') {
-      this.B = this.makeAthlete('B', palette.aiShirt, 0xffffff, t.x - 1, t.z);
-      this.ai = new AiBrain(difficulty, this.rng);
+    this.A = this.makeAthlete(this.me, palette.playerShirt, palette.accent, t.x, t.z + 0.6);
+    if (mode !== 'solo') {
+      this.B = this.makeAthlete(this.them, palette.aiShirt, 0xffffff, t.x - 1, t.z);
+      if (mode === 'match') this.ai = new AiBrain(difficulty, this.rng);
       this.scoreWall = new ScoreWall(this.world.court);
-      this.match = newMatch('A');
+      this.match = newMatch('A'); // 첫 서브: 사람(로컬 대전) / 호스트(온라인)
     }
     scene.add(...this.objects());
 
@@ -250,14 +263,14 @@ export class Game {
     const a = this.A;
     if (this.paused || a.swingCooldown > 0) return;
     if (this.match && this.matchPhase === 'serveWait') {
-      if (this.match.server === 'A') this.serve(a);
+      if (this.match.server === this.me) this.serve(a);
       return;
     }
     const w = this.world;
     const b = w.ball;
     a.swingHand = input.hand;
     if (!b || w.rally.phase !== 'returning') return this.whiff('noBall', input.hand);
-    if (this.mode === 'match' && w.rally.lastHitter === 'A') return this.whiff('notYourTurn', input.hand);
+    if (this.mode !== 'solo' && w.rally.lastHitter === this.me) return this.whiff('notYourTurn', input.hand);
     if (!inReach(b.pos, this.playerPos)) return this.whiff('outOfRange', input.hand);
     // 포핸드는 공이 오른쪽 절반, 백핸드는 왼쪽 절반일 때만
     if (handFor(b.pos, this.playerPos) !== input.hand) return this.whiff('wrongHand', input.hand);
@@ -267,6 +280,7 @@ export class Game {
   private whiff(reason: WhiffReason, hand: Hand): void {
     this.A.swingAnim = 0;
     this.A.swingCooldown = tuning.input.whiffCooldownMs / 1000;
+    this.net?.send({ t: 'whiff', hand });
     this.hooks.onWhiff(reason, hand);
   }
 
@@ -314,7 +328,7 @@ export class Game {
     who.swingCooldown = tuning.input.swingCooldownMs / 1000;
 
     let newBest = false;
-    const human = who.id === 'A';
+    const human = who === this.A;
     if (human) {
       if (this.mode === 'solo') newBest = this.session.onHit(grade);
       else {
@@ -322,6 +336,18 @@ export class Game {
         if (grade === 'perfect') this.matchStats.perfects++;
       }
       this.ai?.onOpponentHit();
+      this.net?.send({
+        t: 'hit',
+        by: who.id,
+        from,
+        vel: plan.vel,
+        serve: false,
+        serveSide: w.rally.serveSide,
+        hand: input.hand,
+        aim: plan.target,
+        stopMs: grade === 'perfect' ? tuning.fx.hitstopMs.perfect : grade === 'good' ? tuning.fx.hitstopMs.good : tuning.fx.hitstopMs.off,
+        grade,
+      });
     } else this.ai?.reset();
 
     // 타격감: 히트스톱(캐릭터까지 멈춤) + 진동 + 섬광 + 소리. AI가 칠 때는 약하게.
@@ -344,8 +370,8 @@ export class Game {
   private setupServe(): void {
     const m = this.match!;
     const c = this.world.court;
-    const server = m.server === 'A' ? this.A : this.B!;
-    const receiver = m.server === 'A' ? this.B! : this.A;
+    const server = m.server === this.me ? this.A : this.B!;
+    const receiver = m.server === this.me ? this.B! : this.A;
     const sp = serverSpot(m.serveSide, c);
     const rp = receiverSpot(m.serveSide, c);
     Object.assign(server.mover, { x: sp.x, z: sp.z, vx: 0, vz: 0 });
@@ -354,7 +380,9 @@ export class Game {
     this.ai?.reset();
     this.rallyHits = 0;
     this.matchPhase = 'serveWait';
-    this.phaseTimer = m.server === 'B' ? tuning.ai.serveDelayMs / 1000 : 0;
+    this.phaseTimer = m.server === this.them && this.mode === 'match' ? tuning.ai.serveDelayMs / 1000 : 0;
+    this.rallyDecided = false;
+    this.remote = null;
     this.scoreWall?.set(m.points.A, m.points.B);
     this.debugDraw.clearActual();
     this.hooks.onServeReady?.(m);
@@ -364,7 +392,7 @@ export class Game {
     const m = this.match!;
     const c = this.world.court;
     const from = serveBallFrom({ x: who.mover.x, z: who.mover.z });
-    const variety = who.id === 'B' ? this.rng.range(-1, 1) : 0;
+    const variety = who === this.B && this.mode === 'match' ? this.rng.range(-1, 1) : 0;
     const vel = planServe(from, m.serveSide, c, variety);
     this.world.launch(from, vel, who.id, true, m.serveSide);
     this.matchPhase = 'rally';
@@ -376,13 +404,27 @@ export class Game {
     who.swingCooldown = tuning.input.swingCooldownMs / 1000;
     this.impact.burst(from, 0.4);
     sfx.play('hit_hard', 0.7);
-    if (who.id === 'A') this.ai?.onOpponentHit();
+    if (who === this.A) {
+      this.ai?.onOpponentHit();
+      this.net?.send({
+        t: 'hit',
+        by: who.id,
+        from,
+        vel,
+        serve: true,
+        serveSide: m.serveSide,
+        hand: 'fore',
+        aim: { x: 0, y: c.serviceLineHeight + 1 },
+        stopMs: 0,
+        grade: 'good',
+      });
+    }
   }
 
   /** 서브 대기 중 서버 손에 들린 공 (표시용) */
   private serveBall(): BallState | null {
     if (!this.match || this.matchPhase !== 'serveWait') return null;
-    const s = this.match.server === 'A' ? this.A : this.B!;
+    const s = this.match.server === this.me ? this.A : this.B!;
     const from = serveBallFrom({ x: s.mover.x, z: s.mover.z });
     return { pos: from, vel: { x: 0, y: 0, z: 0 }, rolling: false, time: 0 };
   }
@@ -403,11 +445,20 @@ export class Game {
     this.footsteps(this.A, realDt, 1);
 
     // AI: 기본 이동 속도 × 난이도 비율 (사람과 같은 이동 모델)
-    if (this.B) {
+    if (this.B && this.mode === 'match') {
       const t = locked ? null : this.B.target;
       if (moveStep(this.B.mover, realDt, w.court, null, t, tuning.ai.level[this.difficulty].speedRatio)) sfx.play('squeak', 0.4);
       this.footsteps(this.B, realDt, 0.5);
       this.separate();
+    } else if (this.B && this.remote) {
+      // 온라인 상대: 받은 위치로 부드럽게 따라감
+      const m = this.B.mover;
+      const k = 1 - Math.exp(-14 * realDt);
+      m.x += (this.remote.x - m.x) * k;
+      m.z += (this.remote.z - m.z) * k;
+      m.vx = this.remote.vx;
+      m.vz = this.remote.vz;
+      this.footsteps(this.B, realDt, 0.5);
     }
 
     w.step(dt);
@@ -456,6 +507,16 @@ export class Game {
   }
 
   private onRallyEnd(r: RallyResult): void {
+    if (this.mode === 'online') {
+      // 상대 차례에 난 실점은 상대 화면이 확정해서 보내준다 (지연 중에 상대가 이미 쳤을 수 있음)
+      if (r.loser !== this.me || this.rallyDecided) return;
+      this.net!.send({ t: 'rally', winner: r.winner, reason: r.reason, at: r.contact?.point, surface: r.contact?.surface });
+    }
+    this.awardPoint(r);
+  }
+
+  private awardPoint(r: RallyResult): void {
+    this.rallyDecided = true;
     this.slowmoTimer = tuning.fx.slowmoMs / 1000;
     this.debugDraw.markResult(r.contact);
     if (this.mode === 'solo') {
@@ -469,14 +530,14 @@ export class Game {
     this.matchStats.longestRally = Math.max(this.matchStats.longestRally, this.rallyHits);
     const m = (this.match = awardRally(this.match!, r.winner));
     this.scoreWall?.set(m.points.A, m.points.B);
-    if (m.winner) sfx.play(m.winner === 'A' ? 'match_win' : 'match_lose', 0.8);
-    else if (m.gameJustWon) sfx.play(m.gameJustWon === 'A' ? 'game_win' : 'match_lose', 0.7);
-    else sfx.play(r.winner === 'A' ? 'point_win' : 'point_lose', 0.7);
+    if (m.winner) sfx.play(m.winner === this.me ? 'match_win' : 'match_lose', 0.8);
+    else if (m.gameJustWon) sfx.play(m.gameJustWon === this.me ? 'game_win' : 'match_lose', 0.7);
+    else sfx.play(r.winner === this.me ? 'point_win' : 'point_lose', 0.7);
     if (m.gameJustWon && !m.winner) {
       const last = m.history[m.history.length - 1];
       this.scoreWall?.set(last.A, last.B);
     }
-    this.arena.cheer(m.gameJustWon ? 1 : r.winner === 'A' ? 0.7 : 0.35);
+    this.arena.cheer(m.gameJustWon ? 1 : r.winner === this.me ? 0.7 : 0.35);
     this.matchPhase = m.winner ? 'over' : 'pointEnd';
     this.phaseTimer = (m.gameJustWon ? tuning.match.gamePauseMs : tuning.match.pointPauseMs) / 1000;
     this.hooks.onRallyEnd(r);
@@ -495,16 +556,16 @@ export class Game {
     this.world.feed(from, vel, 'A');
   }
 
-  /** 내(A) 차례인가: 1인 모드는 항상, 대전은 AI가 마지막으로 쳤을 때 */
+  /** 내 차례인가: 1인 모드는 항상, 대전은 상대가 마지막으로 쳤을 때 */
   private myTurn(): boolean {
-    return this.mode === 'solo' || this.world.rally.lastHitter === 'B';
+    return this.mode === 'solo' || this.world.rally.lastHitter === this.them;
   }
 
   /** 디버그 봇: 이상적인 타격 시각(+설정 오차)에 맞는 손으로 클릭, 서브도 대신 */
   private autoSwing(): void {
     const w = this.world;
     const b = w.ball;
-    if (this.match && this.matchPhase === 'serveWait' && this.match.server === 'A') {
+    if (this.match && this.matchPhase === 'serveWait' && this.match.server === this.me) {
       this.swing({ hand: 'fore', aim: null });
       return;
     }
@@ -561,7 +622,7 @@ export class Game {
     if (this.B && this.ai && !this.paused && this.matchPhase === 'rally') {
       const d = this.ai.update(realDt, { ball: b, pred: this.pred, rally: w.rally, me: this.aiPos!, opponent: this.playerPos, court: w.court });
       this.B.target = d.target;
-      if (d.swing && this.B.swingCooldown <= 0 && b && w.rally.phase === 'returning' && w.rally.lastHitter === 'A') {
+      if (d.swing && this.B.swingCooldown <= 0 && b && w.rally.phase === 'returning' && w.rally.lastHitter === this.me) {
         this.executeHit(this.B, d.swing, this.errMsFor(this.B));
       }
     }
@@ -579,7 +640,7 @@ export class Game {
       }
       // 공이 다가오면 칠 손 쪽으로 미리 라켓을 뺌 (준비 동작)
       let prep = 0;
-      const turn = b && w.rally.phase === 'returning' && (a === this.A ? this.myTurn() : w.rally.lastHitter === 'A');
+      const turn = b && w.rally.phase === 'returning' && (a === this.A ? this.myTurn() : w.rally.lastHitter === this.me);
       if (turn && a.swingAnim === null) {
         const d = Math.hypot(b!.pos.x - a.mover.x, b!.pos.z - a.mover.z);
         prep = Math.max(0, Math.min(1, (2.8 - d) / 1.3));
@@ -616,6 +677,11 @@ export class Game {
     this.swingTrail.update(frozen ? 0 : realDt);
 
     this.arena.tick(performance.now() / 1000);
+    if (this.net && (this.posTimer -= realDt) <= 0) {
+      this.posTimer = 0.05; // 20Hz
+      const m = this.A.mover;
+      this.net.send({ t: 'pos', x: m.x, z: m.z, vx: m.vx, vz: m.vz });
+    }
 
     // 공 + FX
     const shownBall = b ?? this.serveBall();
@@ -639,11 +705,57 @@ export class Game {
 
   private updateMatchFlow(realDt: number): void {
     if (this.matchPhase === 'serveWait') {
-      if (this.match!.server === 'B' && (this.phaseTimer -= realDt) <= 0) this.serve(this.B!);
+      if (this.mode === 'match' && this.match!.server === this.them && (this.phaseTimer -= realDt) <= 0) this.serve(this.B!);
     } else if (this.matchPhase === 'pointEnd') {
       if ((this.phaseTimer -= realDt) <= 0) this.setupServe();
     } else if (this.matchPhase === 'over') {
       if (this.phaseTimer > 0 && (this.phaseTimer -= realDt) <= 0) this.hooks.onMatchEnd?.(this.match!, this.matchStats);
+    }
+  }
+
+  // ── 온라인: 상대 메시지 처리 ──
+
+  receive(msg: NetMsg): void {
+    const w = this.world;
+    switch (msg.t) {
+      case 'pos':
+        this.remote = { x: msg.x, z: msg.z, vx: msg.vx, vz: msg.vz };
+        break;
+      case 'whiff':
+        if (this.B) {
+          this.B.swingHand = msg.hand;
+          this.B.swingAnim = 0;
+        }
+        break;
+      case 'hit': {
+        const B = this.B!;
+        w.launch(msg.from, msg.vel, msg.by, msg.serve, msg.serveSide);
+        if (msg.serve) this.matchPhase = 'rally';
+        this.rallyDecided = false;
+        this.rallyHits++;
+        // 지연 보정: 상대 화면에서 이미 흘러간 만큼 공을 앞으로 (상대 히트스톱 동안은 멈춰 있었으므로 제외)
+        const aheadSec = Math.max(0, this.net!.latencyMs() - msg.stopMs) / 1000;
+        const dt = 1 / tuning.physics.substepHz;
+        const steps = Math.min(120, Math.round((aheadSec * tuning.court.gameSpeed[this.difficulty]) / dt));
+        for (let i = 0; i < steps; i++) {
+          w.step(dt);
+          if (w.ball && w.rally.phase === 'returning') this.trace.push({ ...w.ball.pos, t: w.ball.time });
+        }
+        // 상대 캐릭터: 실제 공 위치에 맞춘 임팩트 자세 + 약한 타격감
+        B.contact = { ball: new THREE.Vector3(msg.from.x, msg.from.y, msg.from.z), aim: new THREE.Vector3(msg.aim.x, msg.aim.y, 0), w: 1 };
+        B.snap = true;
+        B.swingHand = msg.hand;
+        B.swingAnim = SWING_CONTACT;
+        this.impact.burst(msg.from, 0.5);
+        sfx.play(msg.grade === 'perfect' ? 'hit_perfect' : msg.grade === 'good' ? 'hit_hard' : 'hit_soft', 0.75);
+        break;
+      }
+      case 'rally': {
+        if (this.rallyDecided) break;
+        const contact = msg.at ? { surface: msg.surface ?? ('floor' as const), point: msg.at, normalSpeed: 0, speed: 0, time: 0 } : undefined;
+        this.awardPoint({ winner: msg.winner, loser: msg.winner === 'A' ? 'B' : 'A', reason: msg.reason, contact });
+        break;
+      }
     }
   }
 

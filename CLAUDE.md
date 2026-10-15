@@ -10,7 +10,7 @@
 ## 명령
 - `npm run dev` → http://localhost:5173/squash-rally/
 - `npm test` — 룰/물리/스윙 단위 테스트 (Vitest)
-- `npm run e2e` — Playwright 스크린샷/FPS (`tests/e2e/`, 결과는 `test-results/`)
+- `npm run e2e` — Playwright 스크린샷/FPS (`tests/e2e/`, 결과는 `test-results/`). `online.spec.ts`는 브라우저 2개를 실제 PeerJS로 연결하므로 인터넷 필요
 - `npm run e2e:prod` — 배포 빌드(vite preview)로 크롬·파이어폭스·웹킷 스모크 테스트 (`tests/prod/`)
 - `npm run build` / `npm run preview`
 - 디자인 리소스 가공: `python scripts/build_design.py` → `node scripts/build-og.mjs` (로고·파비콘·공유 썸네일)
@@ -21,6 +21,7 @@
 - `src/config/court.ts` — WSF 규격 + 난이도 배율
 - `src/core` 루프/RNG/이벤트, `src/physics` 공, `src/rules` 판정·점수(순수), `src/input` 제스처·키보드
 - `src/game` 플레이어/AI/스윙/모드, `src/render` Three.js, `src/audio`, `src/ui` DOM, `src/debug`
+- `src/net` 온라인 대전 (PeerJS 연결 `online.ts`, 메시지 `protocol.ts`). 공 궤적 결정성이 동기화의 전제 — 물리를 바꾸면 양쪽 버전이 같아야 함 (`PROTOCOL_VERSION`)
 - `public/sfx/` 가공된 음원, `assets/sfx/_inbox/` 수동 다운로드 원본, `assets/design/` GPT 이미지
 - `references/` 레퍼런스 영상·이미지 (수정 금지)
 

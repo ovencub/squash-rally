@@ -4,6 +4,7 @@ import { saveSettings, type Settings } from '../game/settings';
 import { type MatchStats } from '../game/game';
 import { loadBest, type SoloSession } from '../game/solo';
 import { type MatchState } from '../rules/par';
+import { type PlayerId } from '../rules/rally';
 
 // 메뉴 화면들 (기획서 3-10 화면 흐름). DOM 문자열 + data-act 버튼 위임.
 
@@ -59,12 +60,13 @@ export class Screens {
     this.el.querySelector('.panel')!.classList.add('title-panel');
   }
 
-  main(a: { solo: () => void; ai: () => void; howto: () => void; settings: () => void }): void {
+  main(a: { solo: () => void; ai: () => void; online: () => void; howto: () => void; settings: () => void }): void {
     this.show(
       `<img class="logo-img small" src="${import.meta.env.BASE_URL}img/logo.webp" alt="${tuning.game.title}">
        <div class="btns">
          <button class="btn primary" data-act="solo">1인 모드<span class="sub">혼자 벽치기 · 콤보 기록 도전</span></button>
          <button class="btn" data-act="ai">AI 대전<span class="sub">11점 · 3전 2선승</span></button>
+         <button class="btn" data-act="online">친구와 대전<span class="sub">링크로 초대 · 온라인 1:1</span></button>
          <button class="btn ghost" data-act="howto">조작법</button>
          <button class="btn ghost" data-act="settings">설정</button>
        </div>
@@ -158,12 +160,20 @@ export class Screens {
     );
   }
 
-  matchResults(m: MatchState, st: MatchStats, d: Difficulty, a: { retry: () => void; menu: () => void }): void {
-    const win = m.winner === 'A';
-    const games = m.history.map((g, i) => `<div><b>${g.A} - ${g.B}</b><span>GAME ${i + 1}</span></div>`).join('');
+  matchResults(
+    m: MatchState,
+    st: MatchStats,
+    d: Difficulty,
+    a: { retry: () => void; menu: () => void },
+    me: PlayerId = 'A',
+    online = false,
+  ): void {
+    const them: PlayerId = me === 'A' ? 'B' : 'A';
+    const win = m.winner === me;
+    const games = m.history.map((g, i) => `<div><b>${g[me]} - ${g[them]}</b><span>GAME ${i + 1}</span></div>`).join('');
     this.show(
-      `<div class="logo" style="font-size:52px">${win ? 'YOU WIN!' : 'AI WIN'}</div>
-       <p>AI 대전 · ${DIFF_LABEL[d]} · 게임 ${m.games.A} : ${m.games.B}</p>
+      `<div class="logo" style="font-size:52px">${win ? 'YOU WIN!' : online ? 'FRIEND WIN' : 'AI WIN'}</div>
+       <p>${online ? '친구와 대전' : 'AI 대전'} · ${DIFF_LABEL[d]} · 게임 ${m.games[me]} : ${m.games[them]}</p>
        <div class="stats">${games}</div>
        <div class="stats">
          <div><b>${st.hits}</b><span>내 타구</span></div>
@@ -173,6 +183,105 @@ export class Screens {
        <div class="btns">
          <button class="btn primary" data-act="retry">재대결</button>
          <button class="btn ghost" data-act="menu">메인으로</button>
+       </div>`,
+      a,
+    );
+  }
+
+  // ── 친구와 대전 (온라인) ──
+
+  online(a: { create: (d: Difficulty) => void; join: (code: string) => void; back: () => void }): void {
+    let diff: Difficulty = 'normal';
+    this.show(
+      `<h2>친구와 대전</h2>
+       <p>방을 만들어 링크를 보내거나, 친구에게 받은 코드로 들어가세요</p>
+       <div class="row"><label>난이도 (방장)</label><span class="seg">${(['easy', 'normal', 'hard'] as Difficulty[])
+         .map((d) => `<button data-diff="${d}" class="${d === diff ? 'on' : ''}">${DIFF_LABEL[d]}</button>`)
+         .join('')}</span></div>
+       <div class="btns"><button class="btn primary" data-act="create">방 만들기<span class="sub">초대 링크가 만들어져요</span></button></div>
+       <div class="join-row">
+         <input class="code-input" maxlength="6" placeholder="코드 6자리" autocomplete="off" spellcheck="false">
+         <button class="btn" data-act="join">참가</button>
+       </div>
+       <p class="note">연결: 브라우저끼리 직접 (WebRTC) · 일부 회사/학교 네트워크에서는 연결이 안 될 수 있어요</p>
+       <div class="btns"><button class="btn ghost" data-act="back">뒤로</button></div>`,
+      {
+        create: () => a.create(diff),
+        join: () => a.join(this.el.querySelector<HTMLInputElement>('.code-input')!.value),
+        back: a.back,
+      },
+    );
+    this.el.querySelectorAll<HTMLButtonElement>('[data-diff]').forEach((b) =>
+      b.addEventListener('click', () => {
+        diff = b.dataset.diff as Difficulty;
+        b.parentElement!.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+        sfx.play('ui_click');
+      }),
+    );
+    const input = this.el.querySelector<HTMLInputElement>('.code-input')!;
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') a.join(input.value);
+      e.stopPropagation();
+    });
+  }
+
+  onlineWaiting(code: string, link: string, d: Difficulty, a: { cancel: () => void }): void {
+    this.show(
+      `<h2>친구를 기다리는 중…</h2>
+       <div class="spinner"></div>
+       <p>이 링크를 친구에게 보내세요 · 난이도 ${DIFF_LABEL[d]}</p>
+       <div class="link-box"><span class="link-text">${link}</span><button class="btn" data-act="copy">링크 복사</button></div>
+       <p>또는 코드 <b class="room-code">${code}</b></p>
+       <div class="btns"><button class="btn ghost" data-act="cancel">취소</button></div>`,
+      {
+        copy: () => {
+          void navigator.clipboard?.writeText(link).then(
+            () => (this.el.querySelector('[data-act=copy]')!.textContent = '복사됨!'),
+            () => {},
+          );
+        },
+        cancel: a.cancel,
+      },
+    );
+  }
+
+  onlineConnecting(code: string, a: { cancel: () => void }): void {
+    this.show(
+      `<h2>방 ${code}에 연결 중…</h2>
+       <div class="spinner"></div>
+       <p>친구의 방을 찾고 있어요</p>
+       <div class="btns"><button class="btn ghost" data-act="cancel">취소</button></div>`,
+      a,
+    );
+  }
+
+  onlineRematchWait(a: { menu: () => void }): void {
+    this.show(
+      `<h2>재대결 요청 보냄</h2>
+       <div class="spinner"></div>
+       <p>친구가 재대결을 누르면 바로 시작해요</p>
+       <div class="btns"><button class="btn ghost" data-act="menu">메인으로</button></div>`,
+      a,
+    );
+  }
+
+  message(title: string, desc: string, a: { ok: () => void }): void {
+    this.show(
+      `<h2>${title}</h2>
+       <p>${desc}</p>
+       <div class="btns"><button class="btn primary" data-act="ok">확인</button></div>`,
+      a,
+    );
+  }
+
+  leaveOnline(a: { stay: () => void; leave: () => void; settings: () => void }): void {
+    this.show(
+      `<h2>대전 중이에요</h2>
+       <p>온라인 대전은 멈출 수 없어요 (경기는 계속 진행 중)</p>
+       <div class="btns">
+         <button class="btn primary" data-act="stay">계속하기</button>
+         <button class="btn ghost" data-act="settings">설정</button>
+         <button class="btn" data-act="leave">대전 나가기</button>
        </div>`,
       a,
     );
