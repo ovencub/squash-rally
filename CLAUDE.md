@@ -10,7 +10,7 @@
 ## 명령
 - `npm run dev` → http://localhost:5173/squash-rally/
 - `npm test` — 룰/물리/스윙 단위 테스트 (Vitest)
-- `npm run e2e` — Playwright 스크린샷/FPS (`tests/e2e/`, 결과는 `test-results/`). `online.spec.ts`는 브라우저 2개를 실제 PeerJS로 연결하므로 인터넷 필요
+- `npm run e2e` — Playwright 스크린샷/FPS (`tests/e2e/`, 결과는 `test-results/`). e2e는 전용 포트 **5199**에 자체 dev 서버를 띄움(5173은 다른 프로젝트와 겹칠 수 있음). `online.spec.ts`는 브라우저 2개를 실제 PeerJS로 연결하므로 인터넷 필요
 - `npm run e2e:prod` — 배포 빌드(vite preview)로 크롬·파이어폭스·웹킷 스모크 테스트 (`tests/prod/`)
 - `npm run build` / `npm run preview`
 - 애니메이션 확인: `npx playwright test animlab` → `test-results/anim/*.png` 프레임 시트 (`ANIM_ONLY=runStop ANIM_EVERY=2 ANIM_VIEWS=side,diag,back`). 사운드 비교: `?sfxlab`
