@@ -359,7 +359,9 @@ export class Game {
     this.shake.kick(amp * strength * (human ? 1 : tuning.ai.shakeRatio));
     this.impact.burst(from, human ? strength : strength * 0.6);
     if (human) this.swingTrail.setWidth(0.6 + 0.4 * strength);
-    sfx.play(grade === 'perfect' ? 'hit_perfect' : grade === 'good' ? 'hit_hard' : 'hit_soft', (0.55 + 0.45 * strength) * (human ? 1 : 0.8));
+    // 세기 = 타구 속력 (빠를수록 '팡!')
+    const pace = Math.max(0, Math.min(1, (plan.speed - tuning.shots.minSpeed) / (tuning.shots.maxSpeed - tuning.shots.minSpeed)));
+    sfx.play(grade === 'perfect' ? 'hit_perfect' : grade === 'good' ? 'hit_hard' : 'hit_soft', (0.55 + 0.45 * strength) * (human ? 1 : 0.8), 1, pace);
     if (newBest && this.session.combo > 1) sfx.play('combo_up', 0.6);
     if (human && grade === 'perfect') this.arena.cheer(0.12);
     this.hooks.onHit({ by: who.id, grade, score, hint, at: from, speed: plan.speed, hand: input.hand, newBest });
@@ -403,7 +405,7 @@ export class Game {
     who.swingAnim = SWING_CONTACT;
     who.swingCooldown = tuning.input.swingCooldownMs / 1000;
     this.impact.burst(from, 0.4);
-    sfx.play('hit_hard', 0.7);
+    sfx.play('hit_hard', 0.7, 1, 0.4);
     if (who === this.A) {
       // 서브 속력은 코트 크기에 맞춰 자동으로 정해지는 값이라 '빠른 공' 가산을 하지 않음
       this.ai?.onOpponentHit(0);
@@ -502,7 +504,9 @@ export class Game {
   private onContact(ct: BallContact): void {
     if (ct.rolling) return;
     const v = sfx.speedVol(ct.normalSpeed);
-    sfx.play(BOUNCE_SFX[ct.surface], ct.surface === 'tin' ? 1 : v);
+    // 세기 = 면에 부딪히는 속력: 약하면 '툭', 세면 '팡!'
+    const impact = Math.max(0, Math.min(1, ct.normalSpeed / tuning.audio.speedForFullVolume));
+    sfx.play(BOUNCE_SFX[ct.surface], ct.surface === 'tin' ? 1 : v, 1, impact);
     if (ct.surface === 'front' || ct.surface === 'tin') this.wallMarks.add(ct.point);
     this.debugDraw.addActual(ct, tuning.debug.showContacts);
   }
@@ -756,7 +760,8 @@ export class Game {
         B.swingHand = msg.hand;
         B.swingAnim = SWING_CONTACT;
         this.impact.burst(msg.from, 0.5);
-        sfx.play(msg.grade === 'perfect' ? 'hit_perfect' : msg.grade === 'good' ? 'hit_hard' : 'hit_soft', 0.75);
+        const pace = Math.max(0, Math.min(1, (Math.hypot(msg.vel.x, msg.vel.y, msg.vel.z) - tuning.shots.minSpeed) / (tuning.shots.maxSpeed - tuning.shots.minSpeed)));
+        sfx.play(msg.grade === 'perfect' ? 'hit_perfect' : msg.grade === 'good' ? 'hit_hard' : 'hit_soft', 0.75, 1, pace);
         break;
       }
       case 'rally': {

@@ -219,15 +219,16 @@ class Sfx {
     }
   }
 
-  play(name: SfxName, vol = 1, pitch = 1): void {
+  /** k = 세기 0..1 (타구·충돌 속력). 세게 맞을수록 스냅이 커진다 */
+  play(name: SfxName, vol = 1, pitch = 1, k = 0.6): void {
     try {
-      this.playUnsafe(name, vol, pitch);
+      this.playUnsafe(name, vol, pitch, k);
     } catch {
       /* 소리 하나 실패해도 게임은 계속 */
     }
   }
 
-  private playUnsafe(name: SfxName, vol: number, pitch: number): void {
+  private playUnsafe(name: SfxName, vol: number, pitch: number, k: number): void {
     const ctx = this.ctx;
     if (!ctx || !this.out) return;
     if (ctx.state !== 'running') {
@@ -265,10 +266,10 @@ class Sfx {
       src.connect(applyEq(ctx, patch.eq, g));
       g.connect(node);
       src.start(t);
-      if (patch.layer) SYNTH[patch.layer[0]]?.(ctx, node, t, v * patch.layer[1], p);
+      if (patch.layer) SYNTH[patch.layer[0]]?.(ctx, node, t, v * patch.layer[1], p, k);
     } else {
       // 파일이 없거나 아직 로딩 전: 합성음
-      SYNTH[name]?.(ctx, node, t, v, p);
+      SYNTH[name]?.(ctx, node, t, v, p, k);
     }
   }
 
@@ -285,14 +286,14 @@ class Sfx {
   readonly names = Object.keys(BANK) as SfxName[];
 
   /** 검증용: 잔향 없이 소리 하나를 오프라인으로 렌더링 (모노 44.1kHz 샘플 배열) */
-  async renderDry(name: SfxName, seconds = 0.5, parts: 'both' | 'file' | 'layer' = 'both'): Promise<Float32Array> {
+  async renderDry(name: SfxName, seconds = 0.5, parts: 'both' | 'file' | 'layer' = 'both', k = 0.6): Promise<Float32Array> {
     const off = new OfflineAudioContext(1, Math.floor(44100 * seconds), 44100);
     const patch = BANK[name];
     const bufs = this.buffers.get(name);
     const t = 0.01;
     if (patch.file > 0 && bufs?.length) {
       if (parts === 'layer') {
-        if (patch.layer) SYNTH[patch.layer[0]]?.(off as unknown as AudioContext, off.destination, t, patch.layer[1], 1);
+        if (patch.layer) SYNTH[patch.layer[0]]?.(off as unknown as AudioContext, off.destination, t, patch.layer[1], 1, k);
         return (await off.startRendering()).getChannelData(0);
       }
       const src = off.createBufferSource();
@@ -303,8 +304,8 @@ class Sfx {
       src.connect(applyEq(off, patch.eq, g));
       g.connect(off.destination);
       src.start(t);
-      if (patch.layer && parts === 'both') SYNTH[patch.layer[0]]?.(off as unknown as AudioContext, off.destination, t, patch.layer[1], 1);
-    } else SYNTH[name]?.(off as unknown as AudioContext, off.destination, t, 1, 1);
+      if (patch.layer && parts === 'both') SYNTH[patch.layer[0]]?.(off as unknown as AudioContext, off.destination, t, patch.layer[1], 1, k);
+    } else SYNTH[name]?.(off as unknown as AudioContext, off.destination, t, 1, 1, k);
     return (await off.startRendering()).getChannelData(0);
   }
 

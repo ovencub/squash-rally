@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 // M5: 음원 로딩 확인 + 타격/벽 소리를 오프라인 렌더링해 WAV로 저장 (분석 스크립트로 실제 경기음과 비교)
-type S = { unlock: () => void; loaded: number; renderDry: (n: string, s?: number, parts?: string) => Promise<Float32Array> };
+type S = { unlock: () => void; loaded: number; renderDry: (n: string, s?: number, parts?: string, k?: number) => Promise<Float32Array> };
 
 function wav(samples: number[], sr = 44100): Buffer {
   const b = Buffer.alloc(44 + samples.length * 2);
@@ -21,9 +21,15 @@ test('sound bank loads and renders', async ({ page }) => {
   await page.evaluate(() => (window as unknown as { __sfx: S }).__sfx.unlock());
   await expect.poll(() => page.evaluate(() => (window as unknown as { __sfx: S }).__sfx.loaded), { timeout: 10000 }).toBeGreaterThanOrEqual(14);
   mkdirSync('test-results/sound/parts', { recursive: true });
+  mkdirSync('test-results/sound/k', { recursive: true });
   for (const n of ['hit_soft', 'hit_hard', 'hit_perfect', 'bounce_front', 'bounce_glass', 'bounce_floor', 'tin', 'squeak', 'step']) {
     const data = await page.evaluate(async (name) => Array.from(await (window as unknown as { __sfx: S }).__sfx.renderDry(name)), n);
     writeFileSync(`test-results/sound/${n}.wav`, wav(data));
+    // 세기별 (약하게 / 세게)
+    for (const k of [0.15, 1]) {
+      const dk = await page.evaluate(async ([name, kk]) => Array.from(await (window as unknown as { __sfx: S }).__sfx.renderDry(name as string, 0.5, 'both', kk as number)), [n, k] as const);
+      writeFileSync(`test-results/sound/k/${n}_k${k}.wav`, wav(dk));
+    }
     for (const part of ['file', 'layer']) {
       const d2 = await page.evaluate(async ([name, pt]) => Array.from(await (window as unknown as { __sfx: S }).__sfx.renderDry(name, 0.5, pt)), [n, part]);
       writeFileSync(`test-results/sound/parts/${n}_${part}.wav`, wav(d2));

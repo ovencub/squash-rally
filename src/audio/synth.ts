@@ -1,7 +1,8 @@
 // 임시 합성음 (WebAudio). M5에서 무료 음원으로 교체하고, 못 구한 소리는 이걸로 남긴다.
 // 모든 함수: (ctx, 출력 노드, 시작 시각, 볼륨, 피치 배율)
 
-type Synth = (ctx: AudioContext, out: AudioNode, t: number, vol: number, pitch: number) => void;
+/** k = 세기 0..1 (타구 속력·충돌 속력). 세게 맞을수록 '팡' 스냅이 커지고 짧고 단단해진다 */
+type Synth = (ctx: AudioContext, out: AudioNode, t: number, vol: number, pitch: number, k: number) => void;
 
 /**
  * 큰 돔 체육관 잔향 임펄스 (M5 피드백): 초기 반사 몇 개 + 긴 확산 꼬리(RT60 ≈ seconds).
@@ -41,6 +42,30 @@ export function makeImpulse(ctx: AudioContext, seconds = 2.8, preDelay = 0.03): 
     }
   }
   return buf;
+}
+
+/**
+ * 스냅: 테니스공을 세게 칠 때 나는 '팡!' — 고무가 순간적으로 찌그러졌다 튀는 크고 짧은 터짐.
+ * 700Hz 아래는 걷어내(몸통은 다른 레이어 담당) 중고음 '팡'만 남기고, 5.5kHz 위는 깎아 쇳소리 없이.
+ * dur = 음량이 -80dB까지 떨어지는 시간 (실제로 들리는 길이는 그 1/4 정도).
+ */
+function snap(ctx: AudioContext, out: AudioNode, t: number, vol: number, center: number, dur: number) {
+  const src = ctx.createBufferSource();
+  src.buffer = noise(ctx);
+  const hpf = ctx.createBiquadFilter();
+  hpf.type = 'highpass';
+  hpf.frequency.value = 700;
+  hpf.Q.value = 0.7;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = center;
+  bp.Q.value = 0.7;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 5500;
+  src.connect(hpf).connect(bp).connect(lp).connect(env(ctx, out, t, vol, 0.0004, dur));
+  src.start(t);
+  src.stop(t + dur + 0.03);
 }
 
 /** 감쇠 사인 모드 + 피치 하강 (고무가 눌렸다 펴지며 음이 살짝 내려감) */
@@ -146,80 +171,47 @@ function tone(ctx: AudioContext, out: AudioNode, t: number, vol: number, f0: num
 export const SYNTH: Record<string, Synth> = {
   // ── 고무공 레이어 (피드백: 고무공을 세게 때리는 둔탁하고 묵직한 소리) ──
   // 낮은 '쿵' + 속 빈 고무공 공진(피치가 살짝 떨어짐) + 중음 '퍽'. 2.5kHz 위 날카로운 성분은 거의 없음.
-  rubber_hit: (c, o, t, v, p) => {
-    modeDrop(c, o, t, v * 0.05, 155 * p, 95 * p, 0.03, 0.0015); // 낮은 '쿵'
-    modeDrop(c, o, t, v * 0.07, 380 * p, 290 * p, 0.022, 0.0015); // 속 빈 고무공 몸통
-    modeDrop(c, o, t, v * 0.12, 640 * p, 520 * p, 0.018, 0.0015); // 고무 공진
-    thud(c, o, t, v * 1.1, 950 * p, 0.85, 0.085, 0.0018); // 중음 '퍽'
-    mode(c, o, t, v * 0.05, 1300 * p, 0.007); // 줄 소리 아주 살짝
+  // 라켓: 세기 k(타구 속력)에 따라 — 약하면 고무 '톡', 세면 테니스처럼 '팡!' (스냅이 커지고 짧아짐)
+  rubber_hit: (c, o, t, v, p, k) => {
+    snap(c, o, t, v * (0.3 + 1.5 * k * k), (900 + 700 * k) * p, 0.03 - 0.008 * k);
+    modeDrop(c, o, t, v * 0.06, 155 * p, 95 * p, 0.028, 0.0015); // 낮은 '쿵'
+    modeDrop(c, o, t, v * 0.08, 380 * p, 290 * p, 0.02, 0.0015); // 속 빈 고무공 몸통
+    modeDrop(c, o, t, v * 0.12, 640 * p, 520 * p, 0.016, 0.0015); // 고무 공진
+    thud(c, o, t, v * (0.8 - 0.4 * k), 950 * p, 0.85, 0.075, 0.0016); // 중음 '퍽' (약할수록 이게 주인공)
+    mode(c, o, t, v * 0.06, 1300 * p, 0.007); // 줄 소리 아주 살짝
   },
-  rubber_hit_perfect: (c, o, t, v, p) => {
-    modeDrop(c, o, t, v * 0.07, 140 * p, 85 * p, 0.036, 0.0015);
-    modeDrop(c, o, t, v * 0.08, 360 * p, 270 * p, 0.026, 0.0015);
-    modeDrop(c, o, t, v * 0.13, 620 * p, 500 * p, 0.02, 0.0015);
-    thud(c, o, t, v * 1.2, 900 * p, 0.8, 0.1, 0.0018);
-    mode(c, o, t, v * 0.06, 1250 * p, 0.008);
+  rubber_hit_perfect: (c, o, t, v, p, k) => {
+    snap(c, o, t, v * (0.7 + 1.3 * k * k), (1100 + 600 * k) * p, 0.032 - 0.008 * k);
+    snap(c, o, t + 0.0015, v * 0.3 * k, 3000 * p, 0.01); // 겹 스냅: 더 '쩍'
+    modeDrop(c, o, t, v * 0.08, 140 * p, 85 * p, 0.034, 0.0015);
+    modeDrop(c, o, t, v * 0.09, 360 * p, 270 * p, 0.024, 0.0015);
+    modeDrop(c, o, t, v * 0.13, 620 * p, 500 * p, 0.018, 0.0015);
+    thud(c, o, t, v * (0.75 - 0.35 * k), 900 * p, 0.8, 0.09, 0.0016);
+    mode(c, o, t, v * 0.07, 1250 * p, 0.008);
   },
-  // 벽(시멘트·석고): 고무공이 벽을 '퍽' — 낮게 울리는 몸통 + 짧은 중음
-  rubber_wall: (c, o, t, v, p) => {
-    modeDrop(c, o, t, v * 0.05, 125 * p, 80 * p, 0.035, 0.002);
-    modeDrop(c, o, t, v * 0.07, 280 * p, 220 * p, 0.028, 0.002);
-    thud(c, o, t, v * 1.1, 520 * p, 0.8, 0.1, 0.0025);
-    mode(c, o, t, v * 0.03, 70 * p, 0.06); // 벽 전체가 울리는 낮은 붐
+  // 벽(시멘트·석고): 충돌 속력 k에 따라 — 약하면 '툭', 세면 '팡!' + 벽이 울리는 낮은 붐
+  rubber_wall: (c, o, t, v, p, k) => {
+    snap(c, o, t, v * (0.18 + 1.3 * k * k), (850 + 500 * k) * p, 0.03 - 0.008 * k);
+    modeDrop(c, o, t, v * 0.025, 125 * p, 80 * p, 0.035, 0.002);
+    modeDrop(c, o, t, v * 0.05, 300 * p, 240 * p, 0.026, 0.002);
+    thud(c, o, t, v * (0.75 - 0.35 * k), 720 * p, 0.8, 0.09, 0.0022);
+    mode(c, o, t, v * (0.01 + 0.015 * k), 70 * p, 0.06); // 벽 전체가 울리는 낮은 붐 (셀수록 큼)
   },
-  // 마룻바닥: 짧고 낮은 '텁'
-  rubber_floor: (c, o, t, v, p) => {
-    modeDrop(c, o, t, v * 0.14, 115 * p, 75 * p, 0.025, 0.002);
-    thud(c, o, t, v * 0.9, 400 * p, 1.0, 0.06, 0.002);
+  // 마룻바닥: 약하면 짧고 낮은 '텁', 세게 떨어지면 '탁!'
+  rubber_floor: (c, o, t, v, p, k) => {
+    snap(c, o, t, v * (0.3 + 1.5 * k * k), (950 + 550 * k) * p, 0.024 - 0.006 * k);
+    modeDrop(c, o, t, v * 0.08, 115 * p, 75 * p, 0.025, 0.002);
+    thud(c, o, t, v * (0.75 - 0.3 * k), 450 * p, 1.0, 0.06, 0.002);
     mode(c, o, t, v * 0.12, 560 * p, 0.012); // 나무 노크 살짝
   },
   // 유리 뒷벽: 둔탁한 '텅' + 유리 울림 아주 약하게
-  rubber_glass: (c, o, t, v, p) => {
-    modeDrop(c, o, t, v * 0.6, 150 * p, 105 * p, 0.03, 0.002);
-    thud(c, o, t, v * 0.9, 460 * p, 0.9, 0.08, 0.002);
-    mode(c, o, t, v * 0.05, 1150 * p, 0.04);
+  rubber_glass: (c, o, t, v, p, k) => {
+    snap(c, o, t, v * (0.25 + 1.0 * k * k), (1000 + 500 * k) * p, 0.026 - 0.006 * k);
+    modeDrop(c, o, t, v * 0.5, 150 * p, 105 * p, 0.03, 0.002);
+    thud(c, o, t, v * 0.8, 460 * p, 0.9, 0.08, 0.002);
+    mode(c, o, t, v * (0.03 + 0.05 * k), 1150 * p, 0.04);
     mode(c, o, t, v * 0.015, 2600 * p, 0.03);
   },
-  // ── 파일 음원에 겹치는 레이어 (실제 스쿼시 영상 분석값 기반) ──
-  // 라켓 타격 몸통: 470/355/97Hz 주성분 + 1kHz·1.5kHz 배음, -20dB까지 약 20ms
-  body_racket: (c, o, t, v, p) => {
-    for (const [f, a, d] of [
-      [395, 1, 0.011],
-      [468, 0.7, 0.01],
-      [355, 0.5, 0.012],
-      [97, 0.3, 0.014],
-      [974, 0.25, 0.007],
-      [1486, 0.2, 0.006],
-    ]) {
-      mode(c, o, t, v * a * 0.5, f * p, d);
-    }
-    noiseBurst(c, o, t, v * 0.18, 1500 * p, 0.8, 0.01);
-  },
-  // 벽: 실측 벽 공진(253·415·770·883·1023·1534Hz)이 고르게 울리는 넓은 대역 "탁" + 약한 저음 붐
-  wall_boom: (c, o, t, v, p) => {
-    for (const [f, a, d] of [
-      [253, 1, 0.05],
-      [415, 0.9, 0.045],
-      [770, 0.8, 0.04],
-      [883, 0.75, 0.036],
-      [1023, 0.75, 0.032],
-      [1534, 0.75, 0.026],
-      [1857, 0.6, 0.022],
-      [2331, 0.45, 0.018],
-      [110, 0.35, 0.03],
-    ]) {
-      mode(c, o, t, v * a * 0.32, f * p, d);
-    }
-    noiseBurst(c, o, t, v * 0.5, 900 * p, 0.35, 0.035);
-    hp(c, o, t, v * 0.35, 1500 * p, 0.03);
-  },
-  glass_thunk: (c, o, t, v, p) => {
-    mode(c, o, t, v * 0.5, 180 * p, 0.02);
-    mode(c, o, t, v * 0.2, 1150 * p, 0.03);
-    mode(c, o, t, v * 0.1, 2600 * p, 0.025);
-  },
-
-  // 라켓 타격 (M3 피드백: 더 경쾌하고 시원하게): 고음 "탁" 트랜지언트 + 공이 눌리는 "퐁" 피치 드롭 + 짧은 몸통
   hit_soft: (c, o, t, v, p) => {
     hp(c, o, t, v * 0.7, 4200 * p, 0.018);
     tone(c, o, t, v * 0.6, 1100 * p, 420 * p, 0.04, 'sine');
